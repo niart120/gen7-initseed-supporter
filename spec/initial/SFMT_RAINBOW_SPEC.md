@@ -401,7 +401,7 @@ pub struct ChainEntry {
 レイヤー別構成を採用し、責務を明確に分離する。
 
 ```
-crates/rainbow-table/
+crates/gen7seed-rainbow/
 ├── src/
 │   ├── lib.rs                  # ライブラリルート（公開API）
 │   ├── constants.rs            # 定数定義
@@ -429,9 +429,9 @@ crates/rainbow-table/
 **CLI バイナリ**:
 ```
 src/bin/
-├── rainbow_create.rs           # テーブル生成CLI
-├── rainbow_sort.rs             # テーブルソートCLI
-└── rainbow_search.rs           # 検索CLI
+├── gen7seed_create.rs          # テーブル生成CLI
+├── gen7seed_sort.rs            # テーブルソートCLI
+└── gen7seed_search.rs          # 検索CLI
 ```
 
 ### 7.2 定数定義 (constants.rs)

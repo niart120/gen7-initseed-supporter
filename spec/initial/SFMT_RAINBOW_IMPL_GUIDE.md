@@ -28,9 +28,9 @@
 
 | 順序 | ファイル | 内容 |
 |-----|---------|------|
-| 9 | `bin/rainbow_search.rs` | 検索CLI |
-| 10 | `bin/rainbow_create.rs` | テーブル生成CLI |
-| 11 | `bin/rainbow_sort.rs` | ソートCLI |
+| 9 | `bin/gen7seed_search.rs` | 検索CLI |
+| 10 | `bin/gen7seed_create.rs` | テーブル生成CLI |
+| 11 | `bin/gen7seed_sort.rs` | ソートCLI |
 | - | 並列化 | Rayonによる検索・生成の並列化 |
 | - | GPU対応 | wgpuによるテーブル生成高速化 |
 
@@ -39,7 +39,7 @@
 ## 2. モジュール構成
 
 ```
-crates/rainbow-table/
+crates/gen7seed-rainbow/
 ├── src/
 │   ├── lib.rs                  # 公開API
 │   ├── constants.rs            # 定数定義（SFMT以外）

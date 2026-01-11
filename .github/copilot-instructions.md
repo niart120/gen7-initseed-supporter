@@ -31,7 +31,7 @@ gen7-initseed-supporter/
 │   └── agent/                     # Copilot Agent用（PR番号別）
 │       └── pr_{番号}/
 ├── crates/
-│   └── rainbow-table/             # レインボーテーブル処理（Rust）
+│   └── gen7seed-rainbow/          # レインボーテーブル処理（Rust）
 │       └── src/
 │           ├── lib.rs             # 公開API
 │           ├── constants.rs       # 定数定義
@@ -46,9 +46,9 @@ gen7-initseed-supporter/
 │               ├── generator.rs   # テーブル生成
 │               └── searcher.rs    # 検索
 └── src/bin/                       # CLIバイナリ
-    ├── rainbow_create.rs
-    ├── rainbow_sort.rs
-    └── rainbow_search.rs
+    ├── gen7seed_create.rs
+    ├── gen7seed_sort.rs
+    └── gen7seed_search.rs
 ```
 
 ---
@@ -57,7 +57,7 @@ gen7-initseed-supporter/
 
 | カテゴリ | 技術 |
 |---------|------|
-| 言語 | Rust (edition 2021) |
+| 言語 | Rust (edition 2024) |
 | バイナリI/O | byteorder |
 | エラー処理 | thiserror |
 | 並列処理 | rayon |
@@ -78,13 +78,13 @@ cargo build --release
 cargo test
 
 # テーブル生成（consumption=417）
-cargo run --release --bin rainbow_create -- 417
+cargo run --release --bin gen7seed_create -- 417
 
 # テーブルソート
-cargo run --release --bin rainbow_sort -- 417
+cargo run --release --bin gen7seed_sort -- 417
 
 # 初期Seed検索
-cargo run --release --bin rainbow_search -- 417
+cargo run --release --bin gen7seed_search -- 417
 
 # ベンチマーク（criterionセットアップ後）
 cargo bench
