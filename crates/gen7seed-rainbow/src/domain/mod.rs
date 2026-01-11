@@ -1,0 +1,7 @@
+//! Domain layer - Pure computational logic
+//!
+//! This module contains pure functions and algorithms without I/O dependencies.
+
+pub mod chain;
+pub mod hash;
+pub mod sfmt;

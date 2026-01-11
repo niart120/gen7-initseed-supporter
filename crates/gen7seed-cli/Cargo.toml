@@ -1,0 +1,21 @@
+[package]
+name = "gen7seed-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI tools for Gen 7 Pokemon initial seed search"
+license = "MIT"
+
+[[bin]]
+name = "gen7seed_create"
+path = "src/gen7seed_create.rs"
+
+[[bin]]
+name = "gen7seed_sort"
+path = "src/gen7seed_sort.rs"
+
+[[bin]]
+name = "gen7seed_search"
+path = "src/gen7seed_search.rs"
+
+[dependencies]
+gen7seed-rainbow = { path = "../gen7seed-rainbow" }

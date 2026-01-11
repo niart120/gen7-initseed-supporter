@@ -1,0 +1,14 @@
+E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\deps\thiserror-3e466977895c4ff6.d: C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\lib.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\aserror.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\display.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\var.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\private.rs E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\build\thiserror-7785109c320b2068\out/private.rs
+
+E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\deps\libthiserror-3e466977895c4ff6.rlib: C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\lib.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\aserror.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\display.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\var.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\private.rs E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\build\thiserror-7785109c320b2068\out/private.rs
+
+E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\deps\libthiserror-3e466977895c4ff6.rmeta: C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\lib.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\aserror.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\display.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\var.rs C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\private.rs E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\build\thiserror-7785109c320b2068\out/private.rs
+
+C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\lib.rs:
+C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\aserror.rs:
+C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\display.rs:
+C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\var.rs:
+C:\Users\train\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.17\src\private.rs:
+E:\documents\VSCodeWorkspace\gen7-initseed-supporter\target\release\build\thiserror-7785109c320b2068\out/private.rs:
+
+# env-dep:OUT_DIR=E:\\documents\\VSCodeWorkspace\\gen7-initseed-supporter\\target\\release\\build\\thiserror-7785109c320b2068\\out

@@ -1,0 +1,24 @@
+[package]
+name = "gen7seed-rainbow"
+version = "0.1.0"
+edition = "2024"
+description = "Rainbow table implementation for Gen 7 Pokemon initial seed search"
+license = "MIT"
+repository = "https://github.com/your-repo/gen7-initseed-supporter"
+authors = []
+
+[dependencies]
+# 必須
+byteorder = "1.5"
+thiserror = "2.0"
+
+# 推奨
+rayon = "1.10"
+memmap2 = "0.9"
+
+[features]
+default = []
+parallel = []
+mmap = []
+
+[dev-dependencies]
