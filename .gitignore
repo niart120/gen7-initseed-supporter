@@ -1,0 +1,29 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Cargo lock file (optional for libraries, keep for binaries)
+# Cargo.lock
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Rainbow table files (large binary files)
+*.tbl
+*.sorted.tbl
+
+# Benchmark data
+benches/data/
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
