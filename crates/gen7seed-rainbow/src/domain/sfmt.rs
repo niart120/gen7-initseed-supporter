@@ -222,4 +222,22 @@ mod tests {
         let val = sfmt.gen_rand_u64();
         assert!(val > 0 || val == 0); // Just verify it runs
     }
+
+    #[test]
+    fn test_sfmt_64bit_sequence_matches_reference() {
+        // Capture a reference sequence long enough to span multiple state regenerations
+        // (block size is 312 u64 values, so 5700 values crosses many blocks)
+        let mut reference = Vec::with_capacity(5700);
+        let mut sfmt_ref = Sfmt::new(4321);
+        for _ in 0..5700 {
+            reference.push(sfmt_ref.gen_rand_u64());
+        }
+
+        // Re-generate from the same seed and ensure every value matches
+        let mut sfmt = Sfmt::new(4321);
+        for (i, expected) in reference.iter().enumerate() {
+            let actual = sfmt.gen_rand_u64();
+            assert_eq!(actual, *expected, "mismatch at index {}", i);
+        }
+    }
 }
