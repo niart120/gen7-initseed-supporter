@@ -9,6 +9,9 @@ use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
 #[cfg(feature = "multi-sfmt")]
 use crate::domain::hash::gen_hash_from_seed_x16;
 
+#[cfg(feature = "multi-sfmt")]
+use crate::domain::hash::reduce_hash_x16;
+
 /// Chain entry structure
 ///
 /// File format: (start_seed, end_seed)
@@ -93,10 +96,8 @@ pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEnt
         // Calculate 16 hashes simultaneously
         let hashes = gen_hash_from_seed_x16(current_seeds, consumption);
 
-        // Apply reduce to all 16 hashes
-        for i in 0..16 {
-            current_seeds[i] = reduce_hash(hashes[i], n);
-        }
+        // Apply reduce to all 16 hashes using SIMD
+        current_seeds = reduce_hash_x16(hashes, n);
     }
 
     // Create result entries
