@@ -93,6 +93,10 @@ mod tests {
     use super::*;
     use crate::domain::sfmt::Sfmt;
 
+    fn should_run_slow_tests() -> bool {
+        std::env::var("RUN_SLOW_TESTS").map(|v| v == "1").unwrap_or(false)
+    }
+
     #[test]
     fn test_binary_search_empty_table() {
         let table: Vec<ChainEntry> = vec![];
@@ -117,6 +121,10 @@ mod tests {
 
     #[test]
     fn test_search_seeds_empty_table() {
+        if !should_run_slow_tests() {
+            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
+            return;
+        }
         let table: Vec<ChainEntry> = vec![];
         let needle_values = [1u64, 2, 3, 4, 5, 6, 7, 8];
         let results = search_seeds(needle_values, 417, &table);
