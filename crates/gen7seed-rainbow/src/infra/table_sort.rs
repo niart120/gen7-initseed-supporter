@@ -13,11 +13,13 @@ pub fn sort_table(entries: &mut [ChainEntry], consumption: i32) {
     entries.sort_by_key(|entry| gen_hash_from_seed(entry.end_seed, consumption) as u32);
 }
 
-/// Sort table entries with cached sort keys (memory-efficient)
+/// Sort table entries with index-based sorting
 ///
 /// 1. Calculate sort keys for all entries in parallel
-/// 2. Sort by cached keys using in-place permutation
-/// 3. Minimizes memory overhead by reordering in-place
+/// 2. Sort indices by cached keys (can be parallelized for very large tables)
+/// 3. Reorder entries according to sorted indices
+///
+/// Memory usage: O(n) for keys + O(n) for indices + O(n) temporary in permute
 pub fn sort_table_cached(entries: &mut [ChainEntry], consumption: i32) {
     if entries.is_empty() {
         return;
@@ -31,9 +33,9 @@ pub fn sort_table_cached(entries: &mut [ChainEntry], consumption: i32) {
 
     // Step 2: Create index array and sort by keys
     let mut indices: Vec<usize> = (0..entries.len()).collect();
-    indices.sort_by_key(|&i| keys[i]);
+    indices.par_sort_by_key(|&i| keys[i]);
 
-    // Step 3: Reorder entries in-place using indices
+    // Step 3: Reorder entries according to sorted indices
     permute_in_place(entries, &indices);
 }
 
@@ -44,31 +46,37 @@ pub fn sort_table_cached(entries: &mut [ChainEntry], consumption: i32) {
 /// 3. Extract sorted entries
 ///
 /// This is the recommended function for production use with large tables.
+/// Memory usage: O(n) for pairs (key + entry combined)
 pub fn sort_table_parallel(entries: &mut [ChainEntry], consumption: i32) {
     if entries.is_empty() {
         return;
     }
 
-    // Step 1: Calculate sort keys in parallel
-    let keys: Vec<u32> = entries
+    // Step 1 & 2: Calculate keys and create pairs simultaneously
+    let mut pairs: Vec<(u32, ChainEntry)> = entries
         .par_iter()
-        .map(|entry| gen_hash_from_seed(entry.end_seed, consumption) as u32)
+        .map(|entry| {
+            let key = gen_hash_from_seed(entry.end_seed, consumption) as u32;
+            (key, *entry)
+        })
         .collect();
 
-    // Step 2: Create (key, entry) pairs and parallel sort
-    let mut pairs: Vec<(u32, ChainEntry)> = keys.into_iter().zip(entries.iter().copied()).collect();
-
+    // Step 3: Parallel sort
     pairs.par_sort_unstable_by_key(|(key, _)| *key);
 
-    // Step 3: Extract sorted entries
+    // Step 4: Extract sorted entries
     for (i, (_, entry)) in pairs.into_iter().enumerate() {
         entries[i] = entry;
     }
 }
 
-/// Sort with minimal additional memory using Schwartzian transform
+/// Sort using Schwartzian transform with unstable sort
 ///
-/// This variant uses unstable sort for better performance.
+/// Similar to `sort_table_parallel` but explicitly uses the "decorate-sort-undecorate" pattern.
+/// Uses unstable sort for better performance when order of equal elements doesn't matter.
+///
+/// This function is provided as an alternative implementation demonstrating the classic
+/// Schwartzian transform pattern, which may be familiar to developers from other languages.
 pub fn sort_table_schwartzian(entries: &mut [ChainEntry], consumption: i32) {
     if entries.is_empty() {
         return;
@@ -95,6 +103,7 @@ pub fn sort_table_schwartzian(entries: &mut [ChainEntry], consumption: i32) {
 /// Reorder slice in-place according to permutation
 ///
 /// This function reorders elements so that result[i] = slice[perm[i]].
+/// Note: Uses a temporary vector for simplicity and correctness.
 fn permute_in_place<T: Copy>(slice: &mut [T], perm: &[usize]) {
     // Simple approach: create temporary array
     let temp: Vec<T> = perm.iter().map(|&i| slice[i]).collect();
