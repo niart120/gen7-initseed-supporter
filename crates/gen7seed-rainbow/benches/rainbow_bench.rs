@@ -1,36 +1,15 @@
-//! Rainbow Table ベンチマーク
+//! Rainbow Table ベンチマーク（縮減版）
 //!
-//! 性能目標（仕様書より）:
-//! - テーブルロード: < 1秒
-//! - 並列検索（8スレッド）: < 10秒
-//! - シングルスレッド検索: < 40秒
-//! - メモリ使用量: < 200MB
-//!
-//! ベンチマーク構造:
-//! - sfmt/        : SFMT初期化・乱数生成
-//! - hash/        : ハッシュ計算・リダクション
-//! - chain/       : チェーン計算・検証
-//! - table_sort/  : テーブルソート
-//! - throughput/  : スループット測定
-//! - baseline/    : 最適化比較用ベースライン
-//!
-//! 実行方法:
-//!   cargo bench              # 全ベンチマーク
-//!   cargo bench -- sfmt      # SFMTのみ
-//!   cargo bench -- baseline  # ベースラインのみ
-//!
-//! HTMLレポート:
-//!   target/criterion/report/index.html
+//! 目的: CI/ローカルともに1分以内で完走する最小セットを提供する。
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use std::time::Duration;
+
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
-    ChainEntry,
     app::generator::{generate_table_range, generate_table_range_parallel},
-    app::searcher::{search_seeds, search_seeds_parallel},
-    domain::chain::{compute_chain, verify_chain},
-    domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash},
-    domain::sfmt::Sfmt,
-    infra::table_sort::{deduplicate_table, sort_table},
+    app::searcher::search_seeds_parallel,
+    domain::chain::compute_chain,
+    infra::table_sort::sort_table,
 };
 
 #[cfg(feature = "multi-sfmt")]
@@ -40,447 +19,88 @@ use gen7seed_rainbow::domain::chain::compute_chains_x16;
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::domain::sfmt::MultipleSfmt;
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+const CONSUMPTION: i32 = 417;
 
-/// Generate test chain entries for benchmarking
-fn generate_test_entries(count: usize) -> Vec<ChainEntry> {
-    (0..count as u32)
-        .map(|i| ChainEntry::new(i, i.wrapping_mul(0x9E3779B9)))
-        .collect()
+fn ci_criterion() -> Criterion {
+    Criterion::default()
+        .sample_size(15)
+        .measurement_time(Duration::from_secs(8))
 }
-
-// ============================================================================
-// SFMT Benchmarks
-// ============================================================================
-
-fn bench_sfmt(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sfmt");
-
-    // 初期化ベンチマーク
-    group.bench_function("init", |b| b.iter(|| Sfmt::new(black_box(12345))));
-
-    // 乱数生成ベンチマーク（異なる呼び出し回数）
-    for count in [100, 1000, 10000] {
-        group.bench_with_input(BenchmarkId::new("gen_rand", count), &count, |b, &count| {
-            let mut sfmt = Sfmt::new(12345);
-            b.iter(|| {
-                for _ in 0..count {
-                    black_box(sfmt.gen_rand_u64());
-                }
-            })
-        });
-    }
-
-    // ブロック生成（312個単位 = 1ブロック）
-    group.bench_function("gen_rand_block", |b| {
-        b.iter_batched(
-            || Sfmt::new(12345),
-            |mut sfmt| {
-                for _ in 0..312 {
-                    black_box(sfmt.gen_rand_u64());
-                }
-            },
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// SFMT Skip Benchmarks
-// ============================================================================
-
-fn bench_sfmt_skip(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sfmt_skip");
-
-    // Compare skip() vs sequential gen_rand_u64() for various skip counts
-    for &skip_count in &[100, 312, 417, 1000] {
-        // Sequential skip (baseline)
-        group.bench_with_input(
-            BenchmarkId::new("sequential", skip_count),
-            &skip_count,
-            |b, &skip_count| {
-                b.iter_batched(
-                    || Sfmt::new(0x12345678),
-                    |mut sfmt| {
-                        for _ in 0..skip_count {
-                            black_box(sfmt.gen_rand_u64());
-                        }
-                        sfmt
-                    },
-                    criterion::BatchSize::SmallInput,
-                )
-            },
-        );
-
-        // Optimized skip()
-        group.bench_with_input(
-            BenchmarkId::new("skip", skip_count),
-            &skip_count,
-            |b, &skip_count| {
-                b.iter_batched(
-                    || Sfmt::new(0x12345678),
-                    |mut sfmt| {
-                        sfmt.skip(skip_count);
-                        sfmt
-                    },
-                    criterion::BatchSize::SmallInput,
-                )
-            },
-        );
-    }
-
-    group.finish();
-}
-
-// ============================================================================
-// Hash Benchmarks
-// ============================================================================
-
-fn bench_hash(c: &mut Criterion) {
-    let mut group = c.benchmark_group("hash");
-
-    // gen_hash: 針の値配列からハッシュ値を計算
-    group.bench_function("gen_hash", |b| {
-        let rand = [1u64, 2, 3, 4, 5, 6, 7, 8];
-        b.iter(|| gen_hash(black_box(rand)))
-    });
-
-    // gen_hash_from_seed: 異なるconsumption値
-    for consumption in [0, 417, 477] {
-        group.bench_with_input(
-            BenchmarkId::new("gen_hash_from_seed", consumption),
-            &consumption,
-            |b, &consumption| {
-                b.iter(|| gen_hash_from_seed(black_box(12345), black_box(consumption)))
-            },
-        );
-    }
-
-    // reduce_hash 単一呼び出し
-    group.bench_function("reduce_hash_single", |b| {
-        let hash = 0xDEADBEEFCAFEBABEu64;
-        b.iter(|| reduce_hash(black_box(hash), black_box(42)))
-    });
-
-    // reduce_hash 100回呼び出し
-    group.bench_function("reduce_hash_100", |b| {
-        let hash = 0xDEADBEEFCAFEBABEu64;
-        b.iter(|| {
-            for column in 0..100 {
-                black_box(reduce_hash(hash, column));
-            }
-        })
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Chain Benchmarks
-// ============================================================================
 
 fn bench_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("chain");
-    let consumption = 417i32;
 
-    // hash + reduce を100回繰り返し（短いチェーンの模擬）
-    group.bench_function("hash_reduce_100_iterations", |b| {
-        b.iter(|| {
-            let mut seed = 0x12345678u32;
-            for n in 0..100u32 {
-                let hash = gen_hash_from_seed(seed, consumption);
-                seed = reduce_hash(hash, n);
-            }
-            black_box(seed)
-        })
-    });
-
-    // フルチェーン計算（3000ステップ = MAX_CHAIN_LENGTH）
     group.bench_function("compute_chain_full", |b| {
-        b.iter(|| compute_chain(black_box(12345), black_box(consumption)))
+        b.iter(|| compute_chain(black_box(12345), CONSUMPTION))
     });
 
-    // verify_chain ベンチマーク（異なるcolumn位置）
-    for column in [0, 1000, 2999] {
-        group.bench_with_input(
-            BenchmarkId::new("verify_chain", column),
-            &column,
-            |b, &column| {
-                let target_hash = gen_hash_from_seed(12345, consumption);
-                b.iter(|| {
-                    verify_chain(
-                        black_box(12345),
-                        black_box(column),
-                        black_box(target_hash),
-                        black_box(consumption),
-                    )
-                })
-            },
-        );
+    group.finish();
+}
+
+fn bench_search_parallel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("search");
+
+    let mut table = generate_table_range(CONSUMPTION, 0, 1000);
+    sort_table(&mut table, CONSUMPTION);
+    let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
+
+    group.bench_function("parallel", |b| {
+        b.iter(|| search_seeds_parallel(black_box(needle_values), CONSUMPTION, &table))
+    });
+
+    group.finish();
+}
+
+fn bench_table_generation_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("table_generation_comparison");
+
+    group.bench_function("parallel_rayon_1000", |b| {
+        b.iter(|| generate_table_range_parallel(CONSUMPTION, 0, 1000))
+    });
+
+    #[cfg(feature = "multi-sfmt")]
+    {
+        group.bench_function("parallel_multi_sfmt_1000", |b| {
+            b.iter(|| generate_table_range_parallel_multi(CONSUMPTION, 0, 1000))
+        });
     }
 
     group.finish();
 }
 
-// ============================================================================
-// Table Sort Benchmarks
-// ============================================================================
-
-fn bench_table_sort(c: &mut Criterion) {
-    let mut group = c.benchmark_group("table_sort");
-
-    // 異なるサイズでのソート
-    // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
-    // for size in [1000, 10000] {
-    let size = 1000usize;
-    group.bench_with_input(BenchmarkId::new("sort", size), &size, |b, &size| {
-        b.iter_batched(
-            || generate_test_entries(size),
-            |mut entries| {
-                sort_table(&mut entries, 417);
-                entries
-            },
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    // deduplicate（ソート済みデータ）
-    // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
-    // for size in [1000, 10000] {
-    let size = 1000usize;
-    group.bench_with_input(BenchmarkId::new("deduplicate", size), &size, |b, &size| {
-        b.iter_batched(
-            || {
-                let mut entries = generate_test_entries(size);
-                sort_table(&mut entries, 417);
-                entries
-            },
-            |mut entries| {
-                deduplicate_table(&mut entries, 417);
-                entries
-            },
-            criterion::BatchSize::SmallInput,
-        )
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Throughput Benchmarks
-// ============================================================================
-
-fn bench_throughput(c: &mut Criterion) {
-    let mut group = c.benchmark_group("throughput");
-
-    // チェーン生成スループット
-    // NOTE: 100は実行時間が長いため10に削減（100だと約55秒かかる）
-    // let chain_count = 100u64;
-    let chain_count = 10u64;
-    group.throughput(Throughput::Elements(chain_count));
-    group.bench_function("chains", |b| {
-        b.iter(|| {
-            for seed in 0..chain_count as u32 {
-                black_box(compute_chain(seed, 417));
-            }
-        })
-    });
-
-    // 乱数生成スループット
-    let rand_count = 10000u64;
-    group.throughput(Throughput::Elements(rand_count));
-    group.bench_function("rands", |b| {
-        let mut sfmt = Sfmt::new(12345);
-        b.iter(|| {
-            for _ in 0..rand_count {
-                black_box(sfmt.gen_rand_u64());
-            }
-        })
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Baseline Benchmarks (for optimization comparison)
-// ============================================================================
-
-fn bench_baseline(c: &mut Criterion) {
-    let mut group = c.benchmark_group("baseline");
-
-    // gen_hash_from_seed は最も重要なボトルネック
-    // consumption=417 での呼び出し時間を基準とする
-    group.bench_function("gen_hash_from_seed_417", |b| {
-        b.iter(|| gen_hash_from_seed(black_box(12345), black_box(417)))
-    });
-
-    // 単一チェーン計算（上記 × 3000回 + reduce × 3000回）
-    group.bench_function("single_chain_417", |b| {
-        b.iter(|| compute_chain(black_box(12345), black_box(417)))
-    });
-
-    // 内訳確認用: reduce_hash のみ3000回
-    group.bench_function("reduce_hash_3000", |b| {
-        let hash = 0xDEADBEEFCAFEBABEu64;
-        b.iter(|| {
-            for column in 0..3000 {
-                black_box(reduce_hash(hash, column));
-            }
-        })
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Search Benchmarks
-// ============================================================================
-
-fn bench_search(c: &mut Criterion) {
-    let mut group = c.benchmark_group("search");
-
-    // Generate test table and sort it
-    // Using a small table (1000 entries) for benchmarking to keep runtime reasonable
-    let table = generate_table_range(417, 0, 1000);
-    let sorted_table = {
-        let mut t = table;
-        sort_table(&mut t, 417);
-        t
-    };
-
-    let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
-
-    group.bench_function("sequential", |b| {
-        b.iter(|| search_seeds(black_box(needle_values), 417, &sorted_table))
-    });
-
-    group.bench_function("parallel", |b| {
-        b.iter(|| search_seeds_parallel(black_box(needle_values), 417, &sorted_table))
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Table Generation Benchmarks (Sequential vs Parallel)
-// ============================================================================
-
-fn bench_table_generation(c: &mut Criterion) {
-    let mut group = c.benchmark_group("table_generation");
-
-    // Sequential generation of 1000 chains
-    group.bench_function("sequential_1000", |b| {
-        b.iter(|| generate_table_range(417, 0, 1000))
-    });
-
-    // Parallel (rayon) generation of 1000 chains
-    group.bench_function("parallel_1000", |b| {
-        b.iter(|| generate_table_range_parallel(417, 0, 1000))
-    });
-
-    group.finish();
-}
-
-/// Table generation benchmark comparing all available methods
 #[cfg(feature = "multi-sfmt")]
-fn bench_table_generation_all(c: &mut Criterion) {
-    use gen7seed_rainbow::app::generator::generate_table_range_multi;
-
-    let mut group = c.benchmark_group("table_generation_comparison");
-
-    // Sequential single-chain
-    group.bench_function("sequential_1000", |b| {
-        b.iter(|| generate_table_range(417, 0, 1000))
-    });
-
-    // Multi-SFMT (16-parallel SIMD, single thread)
-    group.bench_function("multi_sfmt_1000", |b| {
-        b.iter(|| generate_table_range_multi(417, 0, 1000))
-    });
-
-    // Parallel rayon (single chain per task)
-    group.bench_function("parallel_rayon_1000", |b| {
-        b.iter(|| generate_table_range_parallel(417, 0, 1000))
-    });
-
-    // Multi-SFMT + rayon (best of both worlds)
-    group.bench_function("parallel_multi_sfmt_1000", |b| {
-        b.iter(|| generate_table_range_parallel_multi(417, 0, 1000))
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// Multi-SFMT Benchmarks
-// ============================================================================
-
-#[cfg(feature = "multi-sfmt")]
-fn bench_multi_sfmt(c: &mut Criterion) {
+fn bench_multi_sfmt_core(c: &mut Criterion) {
     let mut group = c.benchmark_group("multi_sfmt");
-    let consumption = 417;
+    let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
 
-    // MultipleSfmt initialization
     group.bench_function("init_x16", |b| {
-        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
-        let mut multi = MultipleSfmt::default();
-        b.iter(|| multi.init(black_box(seeds)))
+        b.iter(|| {
+            let mut multi = MultipleSfmt::default();
+            multi.init(black_box(seeds));
+            multi
+        })
     });
 
-    // MultipleSfmt random generation
     group.bench_function("gen_rand_x16_1000", |b| {
-        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
-        let mut multi = MultipleSfmt::default();
-        multi.init(seeds);
         b.iter(|| {
+            let mut multi = MultipleSfmt::default();
+            multi.init(seeds);
             for _ in 0..1000 {
                 black_box(multi.next_u64x16());
             }
         })
     });
 
-    // Compare: 16 chains using single SFMT (sequential)
-    group.bench_function("chain_single_x16", |b| {
-        b.iter(|| {
-            let mut results = Vec::with_capacity(16);
-            for seed in 0..16u32 {
-                results.push(compute_chain(black_box(seed), consumption));
-            }
-            results
-        })
-    });
-
-    // Compare: 16 chains using MultipleSfmt (parallel SIMD)
     group.bench_function("chain_multi_x16", |b| {
-        b.iter(|| {
-            let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
-            compute_chains_x16(black_box(seeds), consumption)
-        })
-    });
-
-    // Throughput: 64 chains comparison
-    group.throughput(Throughput::Elements(64));
-
-    group.bench_function("chain_single_x64", |b| {
-        b.iter(|| {
-            let mut results = Vec::with_capacity(64);
-            for seed in 0..64u32 {
-                results.push(compute_chain(black_box(seed), consumption));
-            }
-            results
-        })
+        b.iter(|| compute_chains_x16(black_box(seeds), CONSUMPTION))
     });
 
     group.bench_function("chain_multi_x64", |b| {
         b.iter(|| {
             let mut results = Vec::with_capacity(64);
             for batch in 0..4 {
-                let seeds: [u32; 16] = std::array::from_fn(|i| (batch * 16 + i) as u32);
-                let batch_results = compute_chains_x16(black_box(seeds), consumption);
+                let batch_seeds: [u32; 16] = std::array::from_fn(|i| (batch * 16 + i) as u32);
+                let batch_results = compute_chains_x16(black_box(batch_seeds), CONSUMPTION);
                 results.extend(batch_results);
             }
             results
@@ -490,38 +110,25 @@ fn bench_multi_sfmt(c: &mut Criterion) {
     group.finish();
 }
 
-// ============================================================================
-// Criterion Groups
-// ============================================================================
-
 #[cfg(feature = "multi-sfmt")]
-criterion_group!(
-    benches,
-    bench_sfmt,
-    bench_sfmt_skip,
-    bench_hash,
-    bench_chain,
-    bench_table_sort,
-    bench_throughput,
-    bench_baseline,
-    bench_search,
-    bench_table_generation,
-    bench_table_generation_all,
-    bench_multi_sfmt,
-);
+criterion_group! {
+    name = benches;
+    config = ci_criterion();
+    targets =
+        bench_chain,
+        bench_search_parallel,
+        bench_table_generation_comparison,
+        bench_multi_sfmt_core,
+}
 
 #[cfg(not(feature = "multi-sfmt"))]
-criterion_group!(
-    benches,
-    bench_sfmt,
-    bench_sfmt_skip,
-    bench_hash,
-    bench_chain,
-    bench_table_sort,
-    bench_throughput,
-    bench_baseline,
-    bench_search,
-    bench_table_generation,
-);
+criterion_group! {
+    name = benches;
+    config = ci_criterion();
+    targets =
+        bench_chain,
+        bench_search_parallel,
+        bench_table_generation_comparison,
+}
 
 criterion_main!(benches);
