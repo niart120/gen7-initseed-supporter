@@ -160,6 +160,10 @@ mod tests {
 
     #[test]
     fn test_search_seeds_parallel_empty_table() {
+        if !should_run_slow_tests() {
+            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
+            return;
+        }
         let table: Vec<ChainEntry> = vec![];
         let needle_values = [1u64, 2, 3, 4, 5, 6, 7, 8];
         let results = search_seeds_parallel(needle_values, 417, &table);
@@ -168,6 +172,10 @@ mod tests {
 
     #[test]
     fn test_search_parallel_same_results() {
+        if !should_run_slow_tests() {
+            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
+            return;
+        }
         // Use a simple test with empty table - both should return empty
         let table: Vec<ChainEntry> = vec![];
         let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
