@@ -7,7 +7,7 @@ use gen7seed_rainbow::constants::SUPPORTED_CONSUMPTIONS;
 use gen7seed_rainbow::infra::table_io::{
     get_sorted_table_path, get_table_path, load_table, save_table,
 };
-use gen7seed_rainbow::infra::table_sort::sort_table;
+use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
 use std::env;
 use std::time::Instant;
 
@@ -46,7 +46,7 @@ fn main() {
     println!("Sorting...");
 
     let start = Instant::now();
-    sort_table(&mut entries, consumption);
+    sort_table_parallel(&mut entries, consumption);
     let elapsed = start.elapsed();
 
     println!("Sorted in {:.2} seconds.", elapsed.as_secs_f64());
