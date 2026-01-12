@@ -100,7 +100,7 @@ cargo fmt
 # 静的解析
 cargo clippy --all-targets --all-features
 
-# ベンチマーク（criterionセットアップ後）
+# ベンチマーク
 cargo bench
 ```
 
