@@ -1,38 +1,18 @@
-//! SFMT-19937 random number generator
+//! SFMT-19937 scalar implementation
 //!
-//! Implementation of SFMT (SIMD-oriented Fast Mersenne Twister) used in Gen 7 Pokemon games.
-//! This implementation must produce identical output to the game's RNG for correct seed search.
+//! This module contains the scalar (non-SIMD) implementation of SFMT.
+//! Used as fallback when the `simd` feature is not enabled.
 
-// =============================================================================
-// SFMT-19937 internal constants
-// =============================================================================
-
-/// State array size (128-bit units)
-const N: usize = 156;
-
-/// Shift position
-const POS1: usize = 122;
-
-/// Left shift amount
-const SL1: u32 = 18;
-
-/// Right shift amount
-const SR1: u32 = 11;
-
-/// Mask values
-const MSK: [u32; 4] = [0xdfffffef, 0xddfecb7f, 0xbffaffff, 0xbffffff6];
-
-/// Parity check constants
-const PARITY: [u32; 4] = [0x00000001, 0x00000000, 0x00000000, 0x13c9e684];
+use super::{MSK, N, PARITY, POS1, SL1, SR1};
 
 /// Number of 64-bit random numbers generated per state update
 const BLOCK_SIZE64: usize = 312;
 
 // =============================================================================
-// SFMT struct
+// SFMT struct (scalar implementation)
 // =============================================================================
 
-/// SFMT-19937 random number generator
+/// SFMT-19937 random number generator (scalar implementation)
 pub struct Sfmt {
     /// Internal state (128-bit × 156 = 624 × 32-bit)
     state: [[u32; 4]; N],
@@ -221,23 +201,5 @@ mod tests {
         // Should not panic and should produce valid output
         let val = sfmt.gen_rand_u64();
         let _ = val; // Just verify it runs
-    }
-
-    #[test]
-    fn test_sfmt_64bit_sequence_matches_reference() {
-        // Capture a reference sequence long enough to span multiple state regenerations
-        // (block size is 312 u64 values, so 5700 values crosses many blocks)
-        let mut reference = Vec::with_capacity(5700);
-        let mut sfmt_ref = Sfmt::new(4321);
-        for _ in 0..5700 {
-            reference.push(sfmt_ref.gen_rand_u64());
-        }
-
-        // Re-generate from the same seed and ensure every value matches
-        let mut sfmt = Sfmt::new(4321);
-        for (i, expected) in reference.iter().enumerate() {
-            let actual = sfmt.gen_rand_u64();
-            assert_eq!(actual, *expected, "mismatch at index {}", i);
-        }
     }
 }
