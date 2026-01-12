@@ -5,36 +5,73 @@
 //! - 並列検索（8スレッド）: < 10秒
 //! - シングルスレッド検索: < 40秒
 //! - メモリ使用量: < 200MB
+//!
+//! ベンチマーク構造:
+//! - sfmt/        : SFMT初期化・乱数生成
+//! - hash/        : ハッシュ計算・リダクション
+//! - chain/       : チェーン計算・検証
+//! - table_sort/  : テーブルソート
+//! - throughput/  : スループット測定
+//! - baseline/    : 最適化比較用ベースライン
+//!
+//! 実行方法:
+//!   cargo bench              # 全ベンチマーク
+//!   cargo bench -- sfmt      # SFMTのみ
+//!   cargo bench -- baseline  # ベースラインのみ
+//!
+//! HTMLレポート:
+//!   target/criterion/report/index.html
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
-    constants::{NEEDLE_COUNT, NEEDLE_STATES},
-    domain::chain::compute_chain,
+    ChainEntry,
+    domain::chain::{compute_chain, verify_chain},
     domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash},
     domain::sfmt::Sfmt,
+    infra::table_sort::{deduplicate_table, sort_table},
 };
 
-/// SFMT初期化ベンチマーク
-fn bench_sfmt_init(c: &mut Criterion) {
-    c.bench_function("sfmt_init", |b| {
-        b.iter(|| {
-            let sfmt = Sfmt::new(black_box(0x12345678u32));
-            black_box(sfmt)
-        })
-    });
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Generate test chain entries for benchmarking
+fn generate_test_entries(count: usize) -> Vec<ChainEntry> {
+    (0..count as u32)
+        .map(|i| ChainEntry::new(i, i.wrapping_mul(0x9E3779B9)))
+        .collect()
 }
 
-/// SFMT乱数生成ベンチマーク
-fn bench_sfmt_gen_rand(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sfmt_gen_rand");
+// ============================================================================
+// SFMT Benchmarks
+// ============================================================================
 
-    // 1000回の乱数生成
-    group.throughput(Throughput::Elements(1000));
-    group.bench_function("1000_calls", |b| {
+fn bench_sfmt(c: &mut Criterion) {
+    let mut group = c.benchmark_group("sfmt");
+
+    // 初期化ベンチマーク
+    group.bench_function("init", |b| {
+        b.iter(|| Sfmt::new(black_box(12345)))
+    });
+
+    // 乱数生成ベンチマーク（異なる呼び出し回数）
+    for count in [100, 1000, 10000] {
+        group.bench_with_input(BenchmarkId::new("gen_rand", count), &count, |b, &count| {
+            let mut sfmt = Sfmt::new(12345);
+            b.iter(|| {
+                for _ in 0..count {
+                    black_box(sfmt.gen_rand_u64());
+                }
+            })
+        });
+    }
+
+    // ブロック生成（312個単位 = 1ブロック）
+    group.bench_function("gen_rand_block", |b| {
         b.iter_batched(
-            || Sfmt::new(0x12345678u32),
+            || Sfmt::new(12345),
             |mut sfmt| {
-                for _ in 0..1000 {
+                for _ in 0..312 {
                     black_box(sfmt.gen_rand_u64());
                 }
             },
@@ -45,38 +82,53 @@ fn bench_sfmt_gen_rand(c: &mut Criterion) {
     group.finish();
 }
 
-/// ハッシュ計算ベンチマーク
+// ============================================================================
+// Hash Benchmarks
+// ============================================================================
+
 fn bench_hash(c: &mut Criterion) {
     let mut group = c.benchmark_group("hash");
 
     // gen_hash: 針の値配列からハッシュ値を計算
-    let needle_values: [u64; NEEDLE_COUNT] = [5, 10, 3, 8, 12, 1, 7, 15];
     group.bench_function("gen_hash", |b| {
-        b.iter(|| black_box(gen_hash(black_box(needle_values))))
+        let rand = [1u64, 2, 3, 4, 5, 6, 7, 8];
+        b.iter(|| gen_hash(black_box(rand)))
     });
 
-    // gen_hash_from_seed: seedからハッシュ値を計算
-    let consumption = 417i32;
-    group.bench_function("gen_hash_from_seed", |b| {
+    // gen_hash_from_seed: 異なるconsumption値
+    for consumption in [0, 417, 477] {
+        group.bench_with_input(
+            BenchmarkId::new("gen_hash_from_seed", consumption),
+            &consumption,
+            |b, &consumption| {
+                b.iter(|| gen_hash_from_seed(black_box(12345), black_box(consumption)))
+            },
+        );
+    }
+
+    // reduce_hash 単一呼び出し
+    group.bench_function("reduce_hash_single", |b| {
+        let hash = 0xDEADBEEFCAFEBABEu64;
+        b.iter(|| reduce_hash(black_box(hash), black_box(42)))
+    });
+
+    // reduce_hash 100回呼び出し
+    group.bench_function("reduce_hash_100", |b| {
+        let hash = 0xDEADBEEFCAFEBABEu64;
         b.iter(|| {
-            black_box(gen_hash_from_seed(
-                black_box(0x12345678u32),
-                black_box(consumption),
-            ))
+            for column in 0..100 {
+                black_box(reduce_hash(hash, column));
+            }
         })
-    });
-
-    // reduce_hash: ハッシュ値をseedに変換
-    let hash_value = 123456789u64;
-    let column = 100u32;
-    group.bench_function("reduce_hash", |b| {
-        b.iter(|| black_box(reduce_hash(black_box(hash_value), black_box(column))))
     });
 
     group.finish();
 }
 
-/// チェーン計算ベンチマーク
+// ============================================================================
+// Chain Benchmarks
+// ============================================================================
+
 fn bench_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("chain");
     let consumption = 417i32;
@@ -93,62 +145,151 @@ fn bench_chain(c: &mut Criterion) {
         })
     });
 
-    // フルチェーン（3000ステップ = MAX_CHAIN_LENGTH）
+    // フルチェーン計算（3000ステップ = MAX_CHAIN_LENGTH）
     group.bench_function("compute_chain_full", |b| {
-        b.iter(|| {
-            black_box(compute_chain(
-                black_box(0x12345678u32),
-                black_box(consumption),
-            ))
-        })
+        b.iter(|| compute_chain(black_box(12345), black_box(consumption)))
     });
+
+    // verify_chain ベンチマーク（異なるcolumn位置）
+    for column in [0, 1000, 2999] {
+        group.bench_with_input(
+            BenchmarkId::new("verify_chain", column),
+            &column,
+            |b, &column| {
+                let target_hash = gen_hash_from_seed(12345, consumption);
+                b.iter(|| {
+                    verify_chain(
+                        black_box(12345),
+                        black_box(column),
+                        black_box(target_hash),
+                        black_box(consumption),
+                    )
+                })
+            },
+        );
+    }
 
     group.finish();
 }
 
-/// スループットベンチマーク（チェーン生成）
-fn bench_chain_throughput(c: &mut Criterion) {
-    let mut group = c.benchmark_group("chain_throughput");
-    let consumption = 417i32;
+// ============================================================================
+// Table Sort Benchmarks
+// ============================================================================
 
-    // チェーン生成のスループット
-    for count in [10, 100].iter() {
-        group.throughput(Throughput::Elements(*count as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| {
-                for i in 0..count {
-                    black_box(compute_chain(black_box(i as u32), black_box(consumption)));
-                }
-            })
+fn bench_table_sort(c: &mut Criterion) {
+    let mut group = c.benchmark_group("table_sort");
+
+    // 異なるサイズでのソート
+    for size in [1000, 10000] {
+        group.bench_with_input(BenchmarkId::new("sort", size), &size, |b, &size| {
+            b.iter_batched(
+                || generate_test_entries(size),
+                |mut entries| {
+                    sort_table(&mut entries, 417);
+                    entries
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    // deduplicate（ソート済みデータ）
+    for size in [1000, 10000] {
+        group.bench_with_input(BenchmarkId::new("deduplicate", size), &size, |b, &size| {
+            b.iter_batched(
+                || {
+                    let mut entries = generate_test_entries(size);
+                    sort_table(&mut entries, 417);
+                    entries
+                },
+                |mut entries| {
+                    deduplicate_table(&mut entries, 417);
+                    entries
+                },
+                criterion::BatchSize::SmallInput,
+            )
         });
     }
 
     group.finish();
 }
 
-/// ハッシュ空間サイズの計算（参考情報）
-fn bench_hash_space(c: &mut Criterion) {
-    // NEEDLE_STATES^NEEDLE_COUNT = 17^8 = 6,975,757,441
-    let hash_space = (NEEDLE_STATES).pow(NEEDLE_COUNT as u32);
+// ============================================================================
+// Throughput Benchmarks
+// ============================================================================
 
-    c.bench_function("hash_space_info", |b| {
+fn bench_throughput(c: &mut Criterion) {
+    let mut group = c.benchmark_group("throughput");
+
+    // チェーン生成スループット
+    let chain_count = 100u64;
+    group.throughput(Throughput::Elements(chain_count));
+    group.bench_function("chains", |b| {
         b.iter(|| {
-            // ダミーの計算（ベンチマーク用）
-            black_box(hash_space)
+            for seed in 0..chain_count as u32 {
+                black_box(compute_chain(seed, 417));
+            }
         })
     });
 
-    println!("Hash space size: {}", hash_space);
+    // 乱数生成スループット
+    let rand_count = 10000u64;
+    group.throughput(Throughput::Elements(rand_count));
+    group.bench_function("rands", |b| {
+        let mut sfmt = Sfmt::new(12345);
+        b.iter(|| {
+            for _ in 0..rand_count {
+                black_box(sfmt.gen_rand_u64());
+            }
+        })
+    });
+
+    group.finish();
 }
+
+// ============================================================================
+// Baseline Benchmarks (for optimization comparison)
+// ============================================================================
+
+fn bench_baseline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("baseline");
+
+    // gen_hash_from_seed は最も重要なボトルネック
+    // consumption=417 での呼び出し時間を基準とする
+    group.bench_function("gen_hash_from_seed_417", |b| {
+        b.iter(|| gen_hash_from_seed(black_box(12345), black_box(417)))
+    });
+
+    // 単一チェーン計算（上記 × 3000回 + reduce × 3000回）
+    group.bench_function("single_chain_417", |b| {
+        b.iter(|| compute_chain(black_box(12345), black_box(417)))
+    });
+
+    // 内訳確認用: reduce_hash のみ3000回
+    group.bench_function("reduce_hash_3000", |b| {
+        let hash = 0xDEADBEEFCAFEBABEu64;
+        b.iter(|| {
+            for column in 0..3000 {
+                black_box(reduce_hash(hash, column));
+            }
+        })
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// Criterion Groups
+// ============================================================================
 
 criterion_group!(
     benches,
-    bench_sfmt_init,
-    bench_sfmt_gen_rand,
+    bench_sfmt,
     bench_hash,
     bench_chain,
-    bench_chain_throughput,
-    bench_hash_space,
+    bench_table_sort,
+    bench_throughput,
+    bench_baseline,
 );
 
 criterion_main!(benches);
