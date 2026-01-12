@@ -3,7 +3,10 @@
 //! Usage: gen7seed_create <consumption>
 //! Example: gen7seed_create 417
 
-use gen7seed_rainbow::app::generator::generate_table_with_progress;
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::app::generator::generate_table_parallel_multi_with_progress;
+#[cfg(not(feature = "multi-sfmt"))]
+use gen7seed_rainbow::app::generator::generate_table_parallel_with_progress;
 use gen7seed_rainbow::constants::SUPPORTED_CONSUMPTIONS;
 use gen7seed_rainbow::infra::table_io::{get_table_path, save_table};
 use std::env;
@@ -38,17 +41,30 @@ fn main() {
         "Generating rainbow table for consumption {}...",
         consumption
     );
+    #[cfg(feature = "multi-sfmt")]
+    println!("Using Multi-SFMT (16-parallel SIMD) + rayon for maximum speed.");
+    #[cfg(not(feature = "multi-sfmt"))]
+    println!("Using parallel processing for faster generation.");
     println!("This will take a long time. Press Ctrl+C to cancel.");
 
     let start = Instant::now();
 
-    let entries = generate_table_with_progress(consumption, |current, total| {
-        if current % 100000 == 0 || current == total {
-            let progress = (current as f64 / total as f64) * 100.0;
+    let progress_callback = |current: u32, total: u32| {
+        if current.is_multiple_of(100000) || current == total {
+            let progress = if total > 0 {
+                (current as f64 / total as f64) * 100.0
+            } else {
+                100.0
+            };
             print!("\rProgress: {:.2}% ({}/{})", progress, current, total);
             io::stdout().flush().unwrap();
         }
-    });
+    };
+
+    #[cfg(feature = "multi-sfmt")]
+    let entries = generate_table_parallel_multi_with_progress(consumption, progress_callback);
+    #[cfg(not(feature = "multi-sfmt"))]
+    let entries = generate_table_parallel_with_progress(consumption, progress_callback);
 
     println!();
 
