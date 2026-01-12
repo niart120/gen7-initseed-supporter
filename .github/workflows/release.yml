@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux
+            bin_ext: ""
+          - os: macos-latest
+            artifact_suffix: macos
+            bin_ext: ""
+          - os: windows-latest
+            artifact_suffix: windows
+            bin_ext: ".exe"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-10
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cargo build (release)
+        run: cargo build --release --workspace
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen7seed-${{ matrix.artifact_suffix }}
+          path: |
+            target/release/gen7seed_create${{ matrix.bin_ext }}
+            target/release/gen7seed_sort${{ matrix.bin_ext }}
+            target/release/gen7seed_search${{ matrix.bin_ext }}
+          if-no-files-found: error
