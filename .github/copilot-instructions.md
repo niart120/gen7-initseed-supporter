@@ -68,9 +68,14 @@ gen7-initseed-supporter/
 
 ---
 
+## シェルの前提
+- コマンド例は **PowerShell（pwsh）構文**で書くこと。
+- **bash / zsh / sh 前提のコマンドは出さない**（例: `export`, `VAR=value cmd`, `&&` 連結前提、`sed -i`, `cp -r`, `rm -rf` などのUnix系定番をそのまま出さない）。
+- Windows 組み込みコマンドでも良いが、基本は **PowerShell のコマンドレット**を優先する。
+
 ## 開発で使う主要スクリプト
 
-```bash
+```powershell
 # ビルド
 cargo build --release
 
