@@ -18,8 +18,9 @@ name = "gen7seed_search"
 path = "src/gen7seed_search.rs"
 
 [features]
-default = ["multi-sfmt"]
+default = ["multi-sfmt", "mmap"]
 multi-sfmt = ["gen7seed-rainbow/multi-sfmt"]
+mmap = ["gen7seed-rainbow/mmap"]
 
 [dependencies]
 gen7seed-rainbow = { path = "../gen7seed-rainbow" }

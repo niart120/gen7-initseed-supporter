@@ -9,10 +9,16 @@
 
 use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, SUPPORTED_CONSUMPTIONS};
-use gen7seed_rainbow::infra::table_io::{get_sorted_table_path, load_table};
+use gen7seed_rainbow::infra::table_io::get_sorted_table_path;
 use std::env;
 use std::io::{self, Write};
 use std::time::Instant;
+
+#[cfg(feature = "mmap")]
+use gen7seed_rainbow::MappedTable;
+
+#[cfg(not(feature = "mmap"))]
+use gen7seed_rainbow::infra::table_io::load_table;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -34,7 +40,22 @@ fn main() {
     let table_path = get_sorted_table_path(consumption);
 
     println!("Loading table from {}...", table_path);
+    let start_load = Instant::now();
 
+    #[cfg(feature = "mmap")]
+    let table = match MappedTable::open(&table_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error loading table: {}", e);
+            eprintln!(
+                "Make sure to run gen7seed_create {} and gen7seed_sort {} first.",
+                consumption, consumption
+            );
+            std::process::exit(1);
+        }
+    };
+
+    #[cfg(not(feature = "mmap"))]
     let table = match load_table(&table_path) {
         Ok(t) => t,
         Err(e) => {
@@ -47,7 +68,21 @@ fn main() {
         }
     };
 
-    println!("Loaded {} entries.", table.len());
+    let load_time = start_load.elapsed();
+
+    #[cfg(feature = "mmap")]
+    println!(
+        "Table loaded: {} entries (memory-mapped in {:.3} seconds)",
+        table.len(),
+        load_time.as_secs_f64()
+    );
+
+    #[cfg(not(feature = "mmap"))]
+    println!(
+        "Loaded {} entries in {:.3} seconds",
+        table.len(),
+        load_time.as_secs_f64()
+    );
 
     loop {
         print!(
@@ -104,6 +139,10 @@ fn main() {
         println!("Searching...");
         let start = Instant::now();
 
+        #[cfg(feature = "mmap")]
+        let results = search_seeds_parallel(needle_values, consumption, table.as_slice());
+
+        #[cfg(not(feature = "mmap"))]
         let results = search_seeds_parallel(needle_values, consumption, &table);
 
         let elapsed = start.elapsed();

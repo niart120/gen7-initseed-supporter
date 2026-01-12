@@ -23,3 +23,7 @@ pub use constants::*;
 pub use domain::chain::ChainEntry;
 pub use domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash};
 pub use domain::sfmt::Sfmt;
+
+// Re-export mmap functionality when feature is enabled
+#[cfg(feature = "mmap")]
+pub use infra::table_io::MappedTable;
