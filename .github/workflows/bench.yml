@@ -2,6 +2,20 @@ name: Bench
 
 on:
   workflow_dispatch: {}
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+  push:
+    branches: ["main"]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
 
 concurrency:
   group: bench-${{ github.ref }}
