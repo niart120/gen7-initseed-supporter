@@ -139,17 +139,29 @@ impl MappedTable {
     /// Panics on big-endian platforms as they are not supported.
     #[cfg(target_endian = "little")]
     pub fn as_slice(&self) -> &[ChainEntry] {
-        unsafe { std::slice::from_raw_parts(self.mmap.as_ptr() as *const ChainEntry, self.len) }
+        // Verify alignment is correct for ChainEntry
+        let ptr = self.mmap.as_ptr();
+        let align = std::mem::align_of::<ChainEntry>();
+        assert_eq!(
+            ptr as usize % align,
+            0,
+            "Memory-mapped data is not properly aligned for ChainEntry"
+        );
+
+        unsafe { std::slice::from_raw_parts(ptr as *const ChainEntry, self.len) }
     }
 
     #[cfg(target_endian = "big")]
     pub fn as_slice(&self) -> &[ChainEntry] {
-        unimplemented!("Big-endian platforms are not supported for memory-mapped tables")
+        panic!("Big-endian platforms are not supported for memory-mapped tables. Use load_table() instead.");
     }
 
     /// Return an iterator over entries
+    ///
+    /// This iterator safely accesses each entry using the `get()` method,
+    /// which performs bounds checking.
     pub fn iter(&self) -> impl Iterator<Item = ChainEntry> + '_ {
-        (0..self.len).map(move |i| self.get(i).unwrap())
+        (0..self.len).filter_map(move |i| self.get(i))
     }
 }
 
