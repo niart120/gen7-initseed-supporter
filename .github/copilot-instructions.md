@@ -23,32 +23,35 @@
 ```
 gen7-initseed-supporter/
 ├── .github/
-│   └── copilot-instructions.md   # Copilot用プロジェクト指示
-├── spec/                          # 仕様書・設計ドキュメント
-│   ├── initial/                   # 初期設計ドキュメント
-│   │   ├── SFMT_RAINBOW_SPEC.md   # 仕様書
+│   └── copilot-instructions.md     # Copilot用プロジェクト指示
+├── spec/                           # 仕様書・設計ドキュメント
+│   ├── initial/                    # 初期設計ドキュメント
+│   │   ├── SFMT_RAINBOW_SPEC.md    # 仕様書
 │   │   └── SFMT_RAINBOW_IMPL_GUIDE.md  # 実装ガイド
-│   └── agent/                     # Copilot Agent用（PR番号別）
+│   └── agent/                      # Copilot Agent用
+│       ├── local_{番号}/
 │       └── pr_{番号}/
 ├── crates/
-│   └── gen7seed-rainbow/          # レインボーテーブル処理（Rust）
+│   ├── gen7seed-cli/               # CLIバイナリ
+│   │   └── src/
+│   │       ├── gen7seed_create.rs
+│   │       ├── gen7seed_sort.rs
+│   │       └── gen7seed_search.rs
+│   └── gen7seed-rainbow/           # レインボーテーブル処理（Rust）
 │       └── src/
-│           ├── lib.rs             # 公開API
-│           ├── constants.rs       # 定数定義
-│           ├── domain/            # ドメインロジック
-│           │   ├── sfmt.rs        # SFMT-19937
-│           │   ├── hash.rs        # ハッシュ関数
-│           │   └── chain.rs       # チェーン操作
-│           ├── infra/             # インフラ層
-│           │   ├── table_io.rs    # テーブルI/O
-│           │   └── table_sort.rs  # ソート処理
-│           └── app/               # アプリケーション層
-│               ├── generator.rs   # テーブル生成
-│               └── searcher.rs    # 検索
-└── src/bin/                       # CLIバイナリ
-    ├── gen7seed_create.rs
-    ├── gen7seed_sort.rs
-    └── gen7seed_search.rs
+│           ├── lib.rs              # 公開API
+│           ├── constants.rs        # 定数定義
+│           ├── domain/             # ドメインロジック
+│           │   ├── sfmt.rs         # SFMT-19937
+│           │   ├── hash.rs         # ハッシュ関数
+│           │   └── chain.rs        # チェーン操作
+│           ├── infra/              # インフラ層
+│           │   ├── table_io.rs     # テーブルI/O
+│           │   └── table_sort.rs   # ソート処理
+│           └── app/                # アプリケーション層
+│               ├── generator.rs    # テーブル生成
+│               └── searcher.rs     # 検索
+└── rust-toolchain.toml             # 使用ツールチェーン指定
 ```
 
 ---
@@ -64,7 +67,7 @@ gen7-initseed-supporter/
 | メモリマップ | memmap2 |
 | GPU（オプション） | wgpu |
 | テスト | cargo test |
-| ベンチマーク | criterion（予定） |
+| ベンチマーク | criterion |
 
 ---
 
@@ -83,13 +86,13 @@ cargo build --release
 cargo test
 
 # テーブル生成（consumption=417）
-cargo run --release --bin gen7seed_create -- 417
+cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
 
 # テーブルソート
-cargo run --release --bin gen7seed_sort -- 417
+cargo run --release -p gen7seed-cli --bin gen7seed_sort -- 417
 
 # 初期Seed検索
-cargo run --release --bin gen7seed_search -- 417
+cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 
 # コード整形
 cargo fmt
