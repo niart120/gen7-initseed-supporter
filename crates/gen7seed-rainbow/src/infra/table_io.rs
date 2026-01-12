@@ -153,7 +153,9 @@ impl MappedTable {
 
     #[cfg(target_endian = "big")]
     pub fn as_slice(&self) -> &[ChainEntry] {
-        panic!("Big-endian platforms are not supported for memory-mapped tables. Use load_table() instead.");
+        panic!(
+            "Big-endian platforms are not supported for memory-mapped tables. Use load_table() instead."
+        );
     }
 
     /// Return an iterator over entries
