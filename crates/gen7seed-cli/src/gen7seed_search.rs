@@ -7,7 +7,7 @@
 //!   gen7seed_search 417
 //!   Enter needle values (8 values, 0-16, space-separated): 5 12 3 8 14 1 9 6
 
-use gen7seed_rainbow::app::searcher::search_seeds;
+use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, SUPPORTED_CONSUMPTIONS};
 use gen7seed_rainbow::infra::table_io::{get_sorted_table_path, load_table};
 use std::env;
@@ -104,7 +104,7 @@ fn main() {
         println!("Searching...");
         let start = Instant::now();
 
-        let results = search_seeds(needle_values, consumption, &table);
+        let results = search_seeds_parallel(needle_values, consumption, &table);
 
         let elapsed = start.elapsed();
 
