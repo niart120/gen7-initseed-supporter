@@ -29,7 +29,11 @@ gen7-initseed-supporter/
 |       |   |-- domain/
 |       |   |   |-- chain.rs
 |       |   |   |-- hash.rs
-|       |   |   `-- sfmt.rs
+|       |   |   `-- sfmt/
+|       |   |       |-- mod.rs        # SFMT定数・実装選択
+|       |   |       |-- scalar.rs     # スカラー実装
+|       |   |       |-- simd.rs       # SIMD実装（単体）
+|       |   |       `-- multi.rs      # 16並列SFMT（multi-sfmt feature）
 |       |   `-- infra/
 |       |       |-- table_io.rs
 |       |       `-- table_sort.rs

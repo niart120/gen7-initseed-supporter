@@ -23,36 +23,20 @@
 
 use std::simd::{Simd, cmp::SimdPartialEq};
 
+use super::{MSK, N, PARITY, POS1, SL1, SR1};
+
 /// SIMD vector type for 16 parallel u32 operations
 type U32x16 = Simd<u32, 16>;
 
 // =============================================================================
-// SFMT-19937 constants (same as scalar/simd implementations)
+// Derived constants for MultipleSfmt
 // =============================================================================
-
-/// State array size (128-bit units)
-const N: usize = 156;
 
 /// State array size in 32-bit units
 const N32: usize = N * 4; // 624
 
 /// Number of 64-bit random numbers generated per state update
-const BLOCK_SIZE64: usize = 312;
-
-/// Shift position
-const POS1: usize = 122;
-
-/// Left shift amount for 128-bit shift
-const SL1: u32 = 18;
-
-/// Right shift amount
-const SR1: u32 = 11;
-
-/// Mask values for SFMT
-const MSK: [u32; 4] = [0xdfffffef, 0xddfecb7f, 0xbffaffff, 0xbffffff6];
-
-/// Parity check constants
-const PARITY: [u32; 4] = [0x00000001, 0x00000000, 0x00000000, 0x13c9e684];
+const BLOCK_SIZE64: usize = N32 / 2; // 312
 
 // =============================================================================
 // MultipleSfmt struct
