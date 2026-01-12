@@ -30,14 +30,7 @@ gen7-initseed-supporter/
 |   |   |-- SFMT_RAINBOW_SPEC.md
 |   |   `-- SFMT_RAINBOW_IMPL_GUIDE.md
 |   `-- agent/                        # Copilot Agent用
-|       |-- local_001/
-|       |-- local_002/
-|       |-- local_003/
-|       |-- local_004/
-|       |-- local_005/
-|       |-- local_006/
-|       |-- local_007/
-|       `-- local_008/
+|       `-- local_{番号}/
 |-- crates/
 |   |-- gen7seed-cli/                 # CLIバイナリ
 |   |   |-- Cargo.toml
