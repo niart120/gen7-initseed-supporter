@@ -40,7 +40,11 @@ crates/gen7seed-rainbow/
 │   ├── lib.rs                  # 公開API
 │   ├── constants.rs            # 定数定義
 │   ├── domain/                 # ドメインロジック
-│   │   ├── sfmt.rs             # SFMT-19937 乱数生成器
+│   │   ├── sfmt/               # SFMT-19937 乱数生成器
+│   │   │   ├── mod.rs          # 定数・実装選択
+│   │   │   ├── scalar.rs       # スカラー実装
+│   │   │   ├── simd.rs         # SIMD実装（単体）
+│   │   │   └── multi.rs        # 16並列SFMT
 │   │   ├── hash.rs             # ハッシュ関数
 │   │   └── chain.rs            # チェーン操作
 │   ├── infra/                  # インフラ層

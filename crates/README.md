@@ -29,7 +29,11 @@ crates/
     |   |-- domain/
     |   |   |-- chain.rs
     |   |   |-- hash.rs
-    |   |   `-- sfmt.rs
+    |   |   `-- sfmt/
+    |   |       |-- mod.rs
+    |   |       |-- scalar.rs
+    |   |       |-- simd.rs
+    |   |       `-- multi.rs
     |   `-- infra/
     |       |-- table_io.rs
     |       `-- table_sort.rs
