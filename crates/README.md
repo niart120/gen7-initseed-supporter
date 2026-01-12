@@ -1,8 +1,10 @@
 # crates
 
-## 概要
-- gen7seed-cli: レインボーテーブルの生成・ソート・検索を行うCLIバイナリ群。
-- gen7seed-rainbow: レインボーテーブル処理のライブラリ。SFMT互換実装とハッシュチェーン処理を含む。
+このディレクトリには2つのクレートが含まれます。詳細な使い方やAPIは各クレートのREADMEを参照し、プロジェクト全体の利用手順はリポジトリ直下のREADMEを参照してください。
+
+## クレート一覧
+- gen7seed-cli: レインボーテーブルの生成・ソート・検索を行うCLIバイナリ群。ソースは crates/gen7seed-cli/ 配下。上位のREADMEに基本的な実行手順を記載。
+- gen7seed-rainbow: レインボーテーブル処理ライブラリ。SFMT互換実装とハッシュチェーン処理を提供。詳細は crates/gen7seed-rainbow/README.md を参照。
 
 ## ディレクトリ構成
 ```
@@ -34,19 +36,4 @@ crates/
     `-- tests/
         |-- sfmt_reference.rs
         `-- data/
-```
-
-## ビルドとテスト
-```powershell
-# 全体ビルド
-cargo build --release
-
-# CLIバイナリのみビルド
-cargo build --release -p gen7seed-cli
-
-# ライブラリのみビルド
-cargo build --release -p gen7seed-rainbow
-
-# テスト実行
-cargo test
 ```
