@@ -18,7 +18,6 @@ memmap2 = "0.9"
 
 [features]
 default = ["multi-sfmt"]
-parallel = []
 mmap = []
 simd = []  # std::simd を使用（nightly必須）
 multi-sfmt = ["simd"]  # 16並列SFMT（nightly必須）

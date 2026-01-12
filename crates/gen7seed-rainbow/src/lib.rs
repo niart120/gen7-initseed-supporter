@@ -8,7 +8,6 @@
 //! ## Feature Flags
 //!
 //! - `simd`: Use `std::simd` for SIMD-optimized SFMT implementation (requires nightly Rust)
-//! - `parallel`: Enable parallel processing with rayon
 //! - `mmap`: Enable memory-mapped file I/O
 
 // Enable portable_simd when simd feature is enabled
