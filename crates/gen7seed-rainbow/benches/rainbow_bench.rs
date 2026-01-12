@@ -180,38 +180,36 @@ fn bench_table_sort(c: &mut Criterion) {
     // 異なるサイズでのソート
     // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
     // for size in [1000, 10000] {
-    for size in [1000] {
-        group.bench_with_input(BenchmarkId::new("sort", size), &size, |b, &size| {
-            b.iter_batched(
-                || generate_test_entries(size),
-                |mut entries| {
-                    sort_table(&mut entries, 417);
-                    entries
-                },
-                criterion::BatchSize::SmallInput,
-            )
-        });
-    }
+    let size = 1000usize;
+    group.bench_with_input(BenchmarkId::new("sort", size), &size, |b, &size| {
+        b.iter_batched(
+            || generate_test_entries(size),
+            |mut entries| {
+                sort_table(&mut entries, 417);
+                entries
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
 
     // deduplicate（ソート済みデータ）
     // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
     // for size in [1000, 10000] {
-    for size in [1000] {
-        group.bench_with_input(BenchmarkId::new("deduplicate", size), &size, |b, &size| {
-            b.iter_batched(
-                || {
-                    let mut entries = generate_test_entries(size);
-                    sort_table(&mut entries, 417);
-                    entries
-                },
-                |mut entries| {
-                    deduplicate_table(&mut entries, 417);
-                    entries
-                },
-                criterion::BatchSize::SmallInput,
-            )
-        });
-    }
+    let size = 1000usize;
+    group.bench_with_input(BenchmarkId::new("deduplicate", size), &size, |b, &size| {
+        b.iter_batched(
+            || {
+                let mut entries = generate_test_entries(size);
+                sort_table(&mut entries, 417);
+                entries
+            },
+            |mut entries| {
+                deduplicate_table(&mut entries, 417);
+                entries
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
 
     group.finish();
 }

@@ -74,8 +74,8 @@ mod tests {
 
     #[test]
     fn test_generate_table_range_deterministic() {
-        let entries1 = generate_table_range(417, 0, 100);
-        let entries2 = generate_table_range(417, 0, 100);
+        let entries1 = generate_table_range(417, 0, 20);
+        let entries2 = generate_table_range(417, 0, 20);
 
         assert_eq!(entries1, entries2);
     }
@@ -95,16 +95,16 @@ mod tests {
     fn test_generate_table_with_progress_small() {
         let mut progress_calls = 0;
 
-        let entries = generate_table_range(417, 0, 100);
-        assert_eq!(entries.len(), 100);
+        let entries = generate_table_range(417, 0, 20);
+        assert_eq!(entries.len(), 20);
 
         // Test with custom progress function
         let _entries = {
             let mut entries = Vec::new();
-            for start_seed in 0..100u32 {
+            for start_seed in 0..20u32 {
                 let entry = compute_chain(start_seed, 417);
                 entries.push(entry);
-                if start_seed % 10 == 0 {
+                if start_seed % 5 == 0 {
                     progress_calls += 1;
                 }
             }

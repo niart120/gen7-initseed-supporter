@@ -22,36 +22,46 @@
 
 ```
 gen7-initseed-supporter/
-├── .github/
-│   └── copilot-instructions.md     # Copilot用プロジェクト指示
-├── spec/                           # 仕様書・設計ドキュメント
-│   ├── initial/                    # 初期設計ドキュメント
-│   │   ├── SFMT_RAINBOW_SPEC.md    # 仕様書
-│   │   └── SFMT_RAINBOW_IMPL_GUIDE.md  # 実装ガイド
-│   └── agent/                      # Copilot Agent用
-│       ├── local_{番号}/
-│       └── pr_{番号}/
-├── crates/
-│   ├── gen7seed-cli/               # CLIバイナリ
-│   │   └── src/
-│   │       ├── gen7seed_create.rs
-│   │       ├── gen7seed_sort.rs
-│   │       └── gen7seed_search.rs
-│   └── gen7seed-rainbow/           # レインボーテーブル処理（Rust）
-│       └── src/
-│           ├── lib.rs              # 公開API
-│           ├── constants.rs        # 定数定義
-│           ├── domain/             # ドメインロジック
-│           │   ├── sfmt.rs         # SFMT-19937
-│           │   ├── hash.rs         # ハッシュ関数
-│           │   └── chain.rs        # チェーン操作
-│           ├── infra/              # インフラ層
-│           │   ├── table_io.rs     # テーブルI/O
-│           │   └── table_sort.rs   # ソート処理
-│           └── app/                # アプリケーション層
-│               ├── generator.rs    # テーブル生成
-│               └── searcher.rs     # 検索
-└── rust-toolchain.toml             # 使用ツールチェーン指定
+|-- .github/
+|   |-- copilot-instructions.md       # Copilot用プロジェクト指示
+|   `-- workflows/
+|-- spec/                             # 仕様書・設計ドキュメント
+|   |-- initial/                      # 初期設計ドキュメント
+|   |   |-- SFMT_RAINBOW_SPEC.md
+|   |   `-- SFMT_RAINBOW_IMPL_GUIDE.md
+|   `-- agent/                        # Copilot Agent用
+|       `-- local_{番号}/
+|-- crates/
+|   |-- gen7seed-cli/                 # CLIバイナリ
+|   |   |-- Cargo.toml
+|   |   `-- src/
+|   |       |-- gen7seed_create.rs
+|   |       |-- gen7seed_sort.rs
+|   |       `-- gen7seed_search.rs
+|   `-- gen7seed-rainbow/             # レインボーテーブル処理（Rust）
+|       |-- Cargo.toml
+|       |-- README.md
+|       |-- benches/
+|       |   `-- rainbow_bench.rs
+|       |-- src/
+|       |   |-- constants.rs
+|       |   |-- lib.rs
+|       |   |-- app/
+|       |   |   |-- generator.rs
+|       |   |   `-- searcher.rs
+|       |   |-- domain/
+|       |   |   |-- chain.rs
+|       |   |   |-- hash.rs
+|       |   |   `-- sfmt.rs
+|       |   `-- infra/
+|       |       |-- table_io.rs
+|       |       `-- table_sort.rs
+|       `-- tests/
+|           |-- sfmt_reference.rs
+|           `-- data/
+|-- Cargo.toml
+|-- README.md
+`-- rust-toolchain.toml               # 使用ツールチェーン指定
 ```
 
 ---
@@ -60,7 +70,8 @@ gen7-initseed-supporter/
 
 | カテゴリ | 技術 |
 |---------|------|
-| 言語 | Rust (edition 2024) |
+| 言語 | Rust (edition 2024 / nightly-2026-01-10) |
+| SIMD | std::simd（feature `simd`、デフォルト有効。非対応環境は `--no-default-features` で無効化） |
 | バイナリI/O | byteorder |
 | エラー処理 | thiserror |
 | 並列処理 | rayon |

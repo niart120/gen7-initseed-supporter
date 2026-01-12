@@ -1,6 +1,7 @@
 # Rust build artifacts
 /target/
 **/target/
+/.cargo
 
 # Cargo lock file (optional for libraries, keep for binaries)
 # Cargo.lock
