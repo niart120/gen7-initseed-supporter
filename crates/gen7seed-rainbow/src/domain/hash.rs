@@ -82,8 +82,7 @@ mod tests {
     fn test_gen_hash_sequential() {
         let rand = [0, 1, 2, 3, 4, 5, 6, 7];
         // Manual calculation: 0*17^7 + 1*17^6 + 2*17^5 + 3*17^4 + 4*17^3 + 5*17^2 + 6*17 + 7
-        let expected = 0 * 17u64.pow(7)
-            + 1 * 17u64.pow(6)
+        let expected = 17u64.pow(6)
             + 2 * 17u64.pow(5)
             + 3 * 17u64.pow(4)
             + 4 * 17u64.pow(3)

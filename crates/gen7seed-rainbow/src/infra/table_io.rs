@@ -59,8 +59,7 @@ mod tests {
     use std::fs;
 
     fn create_temp_file(name: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(name);
-        path
+        std::env::temp_dir().join(name)
     }
 
     #[test]

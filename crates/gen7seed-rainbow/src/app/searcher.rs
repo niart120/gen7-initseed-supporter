@@ -60,11 +60,11 @@ fn search_column(
 ///
 /// The table stores end_seed, but the sort key is
 /// gen_hash_from_seed(end_seed, consumption) as u32 ascending.
-fn binary_search_by_end_hash<'a>(
-    table: &'a [ChainEntry],
+fn binary_search_by_end_hash(
+    table: &[ChainEntry],
     target_hash: u32,
     consumption: i32,
-) -> impl Iterator<Item = &'a ChainEntry> {
+) -> impl Iterator<Item = &ChainEntry> {
     // Find the starting position using binary search
     let start_idx = {
         let mut left = 0;

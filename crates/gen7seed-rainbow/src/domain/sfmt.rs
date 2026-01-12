@@ -220,7 +220,7 @@ mod tests {
         let mut sfmt = Sfmt::new(0);
         // Should not panic and should produce valid output
         let val = sfmt.gen_rand_u64();
-        assert!(val > 0 || val == 0); // Just verify it runs
+        let _ = val; // Just verify it runs
     }
 
     #[test]
