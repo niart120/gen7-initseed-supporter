@@ -56,6 +56,36 @@ pub fn reduce_hash(hash: u64, column: u32) -> u32 {
     h as u32
 }
 
+/// Reduce 16 hash values simultaneously using SIMD (convert to 32-bit seeds)
+///
+/// This is the 16-parallel version of `reduce_hash`, designed to work with
+/// `gen_hash_from_seed_x16()` output.
+///
+/// Uses `std::simd` for vectorized operations. The compiler automatically
+/// selects optimal SIMD instructions based on the target:
+/// - AVX512: 1 × u64x16 operation
+/// - AVX2: 2 × u64x8 operations
+/// - SSE2: 4 × u64x4 operations
+#[cfg(feature = "multi-sfmt")]
+#[inline]
+pub fn reduce_hash_x16(hashes: [u64; 16], column: u32) -> [u32; 16] {
+    use std::simd::Simd;
+
+    // Use u64x16 for full SIMD width (AVX512 will use single instruction)
+    let h = Simd::from_array(hashes);
+    let col = Simd::splat(column as u64);
+    let c1 = Simd::splat(0xbf58476d1ce4e5b9u64);
+    let c2 = Simd::splat(0x94d049bb133111ebu64);
+
+    let mut h = h + col;
+    h = (h ^ (h >> 30)) * c1;
+    h = (h ^ (h >> 27)) * c2;
+    h ^= h >> 31;
+
+    let arr = h.to_array();
+    std::array::from_fn(|i| arr[i] as u32)
+}
+
 // =============================================================================
 // 16-parallel hash functions (multi-sfmt feature)
 // =============================================================================
@@ -336,5 +366,53 @@ mod tests {
         let result = reduce_hash(hash, u32::MAX);
         // Verify it produces a valid result
         let _ = result; // Just ensure no panic
+    }
+
+    // =============================================================================
+    // reduce_hash_x16 tests (multi-sfmt feature)
+    // =============================================================================
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_matches_single() {
+        let hashes: [u64; 16] = std::array::from_fn(|i| {
+            0x123456789ABCDEF0u64.wrapping_add(i as u64 * 0x1111111111111111)
+        });
+
+        for column in [0, 1, 100, 1000, 2999] {
+            let results_x16 = reduce_hash_x16(hashes, column);
+
+            for (i, &hash) in hashes.iter().enumerate() {
+                let single_result = reduce_hash(hash, column);
+                assert_eq!(
+                    results_x16[i], single_result,
+                    "Mismatch at index {} for column {}",
+                    i, column
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_deterministic() {
+        let hashes: [u64; 16] = std::array::from_fn(|i| i as u64 * 0xDEADBEEF);
+
+        let results1 = reduce_hash_x16(hashes, 42);
+        let results2 = reduce_hash_x16(hashes, 42);
+
+        assert_eq!(results1, results2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_different_columns() {
+        let hashes: [u64; 16] = std::array::from_fn(|i| i as u64);
+
+        let results_col0 = reduce_hash_x16(hashes, 0);
+        let results_col1 = reduce_hash_x16(hashes, 1);
+
+        // Different columns should produce different results
+        assert_ne!(results_col0, results_col1);
     }
 }
