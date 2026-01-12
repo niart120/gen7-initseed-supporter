@@ -94,7 +94,9 @@ mod tests {
     use crate::domain::sfmt::Sfmt;
 
     fn should_run_slow_tests() -> bool {
-        std::env::var("RUN_SLOW_TESTS").map(|v| v == "1").unwrap_or(false)
+        std::env::var("RUN_SLOW_TESTS")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     }
 
     #[test]
