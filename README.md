@@ -8,7 +8,8 @@
 [fujidig/sfmt-rainbow](https://github.com/fujidig/sfmt-rainbow) のRust移植版です。
 
 ## 必要要件
-- Rust (2024 edition)
+- Rust (2024 edition / nightly-2026-01-10)
+- デフォルトでSIMD版SFMTを使用します（feature `simd`）。SIMD非対応環境や互換確認が必要な場合は `--no-default-features` を付けてビルド/テストしてください。
 
 ## 使い方 (Usage Guide)
 

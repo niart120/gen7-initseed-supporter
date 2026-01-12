@@ -17,7 +17,7 @@ rayon = "1.10"
 memmap2 = "0.9"
 
 [features]
-default = []
+default = ["simd"]
 parallel = []
 mmap = []
 simd = []  # std::simd を使用（nightly必須）

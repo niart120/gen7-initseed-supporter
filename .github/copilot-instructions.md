@@ -70,7 +70,8 @@ gen7-initseed-supporter/
 
 | カテゴリ | 技術 |
 |---------|------|
-| 言語 | Rust (edition 2024) |
+| 言語 | Rust (edition 2024 / nightly-2026-01-10) |
+| SIMD | std::simd（feature `simd`、デフォルト有効。非対応環境は `--no-default-features` で無効化） |
 | バイナリI/O | byteorder |
 | エラー処理 | thiserror |
 | 並列処理 | rayon |
