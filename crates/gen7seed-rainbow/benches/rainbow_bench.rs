@@ -25,6 +25,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
     ChainEntry,
+    app::searcher::{search_seeds, search_seeds_parallel},
     domain::chain::{compute_chain, verify_chain},
     domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash},
     domain::sfmt::Sfmt,
@@ -333,6 +334,37 @@ fn bench_baseline(c: &mut Criterion) {
 }
 
 // ============================================================================
+// Search Benchmarks
+// ============================================================================
+
+fn bench_search(c: &mut Criterion) {
+    use gen7seed_rainbow::app::generator::generate_table_range;
+
+    let mut group = c.benchmark_group("search");
+
+    // Generate test table and sort it
+    // Using a small table (1000 entries) for benchmarking to keep runtime reasonable
+    let table = generate_table_range(417, 0, 1000);
+    let sorted_table = {
+        let mut t = table;
+        sort_table(&mut t, 417);
+        t
+    };
+
+    let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
+
+    group.bench_function("sequential", |b| {
+        b.iter(|| search_seeds(black_box(needle_values), 417, &sorted_table))
+    });
+
+    group.bench_function("parallel", |b| {
+        b.iter(|| search_seeds_parallel(black_box(needle_values), 417, &sorted_table))
+    });
+
+    group.finish();
+}
+
+// ============================================================================
 // Multi-SFMT Benchmarks
 // ============================================================================
 
@@ -421,6 +453,7 @@ criterion_group!(
     bench_table_sort,
     bench_throughput,
     bench_baseline,
+    bench_search,
     bench_multi_sfmt,
 );
 
@@ -434,6 +467,7 @@ criterion_group!(
     bench_table_sort,
     bench_throughput,
     bench_baseline,
+    bench_search,
 );
 
 criterion_main!(benches);
