@@ -28,10 +28,8 @@ pub fn gen_hash(rand: [u64; NEEDLE_COUNT]) -> u64 {
 pub fn gen_hash_from_seed(seed: u32, consumption: i32) -> u64 {
     let mut sfmt = Sfmt::new(seed);
 
-    // Skip consumption random numbers
-    for _ in 0..consumption {
-        sfmt.gen_rand_u64();
-    }
+    // Skip consumption random numbers (optimized)
+    sfmt.skip(consumption as usize);
 
     // Get 8 random numbers and calculate hash
     let mut rand = [0u64; NEEDLE_COUNT];
@@ -163,5 +161,72 @@ mod tests {
         // Should wrap around correctly
         let result = reduce_hash(hash, 0);
         assert_eq!(result, 0xFFFFFFFFu32);
+    }
+
+    // =========================================================================
+    // Skip optimization compatibility tests
+    // =========================================================================
+
+    /// Helper function that computes hash using sequential skip (for testing)
+    fn gen_hash_from_seed_sequential(seed: u32, consumption: i32) -> u64 {
+        let mut sfmt = Sfmt::new(seed);
+
+        // Skip consumption random numbers sequentially
+        for _ in 0..consumption {
+            sfmt.gen_rand_u64();
+        }
+
+        // Get 8 random numbers and calculate hash
+        let mut rand = [0u64; NEEDLE_COUNT];
+        for r in rand.iter_mut() {
+            *r = sfmt.gen_rand_u64() % NEEDLE_STATES;
+        }
+
+        gen_hash(rand)
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_skip_matches_sequential() {
+        // Verify that skip optimization produces identical results
+        let test_cases = [
+            (0, 0),
+            (0, 100),
+            (0, 311),
+            (0, 312),
+            (0, 313),
+            (0x12345678, 417),
+            (0xDEADBEEF, 477),
+            (0xFFFFFFFF, 1000),
+        ];
+
+        for (seed, consumption) in test_cases {
+            let hash_skip = gen_hash_from_seed(seed, consumption);
+            let hash_seq = gen_hash_from_seed_sequential(seed, consumption);
+            assert_eq!(
+                hash_skip, hash_seq,
+                "Hash mismatch for seed={:#x}, consumption={}",
+                seed, consumption
+            );
+        }
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_consumption_zero() {
+        // consumption=0 should work correctly
+        let hash = gen_hash_from_seed(12345, 0);
+        let hash_seq = gen_hash_from_seed_sequential(12345, 0);
+        assert_eq!(hash, hash_seq);
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_consumption_417_reference() {
+        // Reference test for consumption=417 (commonly used value)
+        // This ensures the optimization doesn't change behavior
+        let hash1 = gen_hash_from_seed(0, 417);
+        let hash2 = gen_hash_from_seed(0, 417);
+        assert_eq!(hash1, hash2, "Hash should be deterministic");
+
+        let hash_seq = gen_hash_from_seed_sequential(0, 417);
+        assert_eq!(hash1, hash_seq, "Skip should match sequential");
     }
 }
