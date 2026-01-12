@@ -1,25 +1,3 @@
-# gen7-initseed-supporter
-
-## はじめに
-ユーザとの対話は日本語で行うこと。
-
----
-
-## プロジェクト概要
-
-第7世代ポケモン（サン・ムーン、ウルトラサン・ウルトラムーン）の初期Seed特定を支援するツール。
-
-**主な機能**:
-- レインボーテーブルを用いた初期Seed検索（オフライン対応）
-- 時計の針の値（8本×17段階）から初期Seedを逆算
-- SFMT-19937 乱数生成器の完全互換実装
-
-**参照**: [fujidig/sfmt-rainbow](https://github.com/fujidig/sfmt-rainbow) をRustに移植・独自改変
-
----
-
-## ディレクトリ構成
-
 ```
 gen7-initseed-supporter/
 |-- .github/
@@ -30,7 +8,15 @@ gen7-initseed-supporter/
 |   |   |-- SFMT_RAINBOW_SPEC.md
 |   |   `-- SFMT_RAINBOW_IMPL_GUIDE.md
 |   `-- agent/                        # Copilot Agent用
-|       `-- local_{番号}/
+|       |-- local_001/
+|       |-- local_002/
+|       |-- local_003/
+|       |-- local_004/
+|       |-- local_005/
+|       |-- local_006/
+|       |-- local_007/
+|       |-- local_008/
+|       `-- pr_{番号}/
 |-- crates/
 |   |-- gen7seed-cli/                 # CLIバイナリ
 |   |   |-- Cargo.toml
@@ -63,30 +49,6 @@ gen7-initseed-supporter/
 |-- README.md
 `-- rust-toolchain.toml               # 使用ツールチェーン指定
 ```
-
----
-
-## 技術スタック
-
-| カテゴリ | 技術 |
-|---------|------|
-| 言語 | Rust (edition 2024 / nightly-2026-01-10) |
-| SIMD | std::simd（feature `simd`、デフォルト有効。非対応環境は `--no-default-features` で無効化） |
-| バイナリI/O | byteorder |
-| エラー処理 | thiserror |
-| 並列処理 | rayon |
-| メモリマップ | memmap2 |
-| GPU（オプション） | wgpu |
-| テスト | cargo test |
-| ベンチマーク | criterion |
-
----
-
-## シェルの前提
-- コマンド例は **PowerShell（pwsh）構文**で書くこと。
-- **bash / zsh / sh 前提のコマンドは出さない**（例: `export`, `VAR=value cmd`, `&&` 連結前提、`sed -i`, `cp -r`, `rm -rf` などのUnix系定番をそのまま出さない）。
-- Windows 組み込みコマンドでも良いが、基本は **PowerShell のコマンドレット**を優先する。
-
 ## 開発で使う主要スクリプト
 
 ```powershell
