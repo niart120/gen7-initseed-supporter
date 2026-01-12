@@ -180,7 +180,9 @@ fn bench_table_sort(c: &mut Criterion) {
     let mut group = c.benchmark_group("table_sort");
 
     // 異なるサイズでのソート
-    for size in [1000, 10000] {
+    // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
+    // for size in [1000, 10000] {
+    for size in [1000] {
         group.bench_with_input(BenchmarkId::new("sort", size), &size, |b, &size| {
             b.iter_batched(
                 || generate_test_entries(size),
@@ -194,7 +196,9 @@ fn bench_table_sort(c: &mut Criterion) {
     }
 
     // deduplicate（ソート済みデータ）
-    for size in [1000, 10000] {
+    // NOTE: 10000は実行時間が長いためコメントアウト（約50秒かかる）
+    // for size in [1000, 10000] {
+    for size in [1000] {
         group.bench_with_input(BenchmarkId::new("deduplicate", size), &size, |b, &size| {
             b.iter_batched(
                 || {
@@ -222,7 +226,9 @@ fn bench_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("throughput");
 
     // チェーン生成スループット
-    let chain_count = 100u64;
+    // NOTE: 100は実行時間が長いため10に削減（100だと約55秒かかる）
+    // let chain_count = 100u64;
+    let chain_count = 10u64;
     group.throughput(Throughput::Elements(chain_count));
     group.bench_function("chains", |b| {
         b.iter(|| {
