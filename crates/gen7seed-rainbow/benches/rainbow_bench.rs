@@ -25,6 +25,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
     ChainEntry,
+    app::generator::{generate_table_range, generate_table_range_parallel},
     app::searcher::{search_seeds, search_seeds_parallel},
     domain::chain::{compute_chain, verify_chain},
     domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash},
@@ -32,6 +33,8 @@ use gen7seed_rainbow::{
     infra::table_sort::{deduplicate_table, sort_table},
 };
 
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::domain::chain::compute_chains_x16;
 #[cfg(feature = "multi-sfmt")]
@@ -338,8 +341,6 @@ fn bench_baseline(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_search(c: &mut Criterion) {
-    use gen7seed_rainbow::app::generator::generate_table_range;
-
     let mut group = c.benchmark_group("search");
 
     // Generate test table and sort it
@@ -359,6 +360,56 @@ fn bench_search(c: &mut Criterion) {
 
     group.bench_function("parallel", |b| {
         b.iter(|| search_seeds_parallel(black_box(needle_values), 417, &sorted_table))
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// Table Generation Benchmarks (Sequential vs Parallel)
+// ============================================================================
+
+fn bench_table_generation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("table_generation");
+
+    // Sequential generation of 1000 chains
+    group.bench_function("sequential_1000", |b| {
+        b.iter(|| generate_table_range(417, 0, 1000))
+    });
+
+    // Parallel (rayon) generation of 1000 chains
+    group.bench_function("parallel_1000", |b| {
+        b.iter(|| generate_table_range_parallel(417, 0, 1000))
+    });
+
+    group.finish();
+}
+
+/// Table generation benchmark comparing all available methods
+#[cfg(feature = "multi-sfmt")]
+fn bench_table_generation_all(c: &mut Criterion) {
+    use gen7seed_rainbow::app::generator::generate_table_range_multi;
+
+    let mut group = c.benchmark_group("table_generation_comparison");
+
+    // Sequential single-chain
+    group.bench_function("sequential_1000", |b| {
+        b.iter(|| generate_table_range(417, 0, 1000))
+    });
+
+    // Multi-SFMT (16-parallel SIMD, single thread)
+    group.bench_function("multi_sfmt_1000", |b| {
+        b.iter(|| generate_table_range_multi(417, 0, 1000))
+    });
+
+    // Parallel rayon (single chain per task)
+    group.bench_function("parallel_rayon_1000", |b| {
+        b.iter(|| generate_table_range_parallel(417, 0, 1000))
+    });
+
+    // Multi-SFMT + rayon (best of both worlds)
+    group.bench_function("parallel_multi_sfmt_1000", |b| {
+        b.iter(|| generate_table_range_parallel_multi(417, 0, 1000))
     });
 
     group.finish();
@@ -454,6 +505,8 @@ criterion_group!(
     bench_throughput,
     bench_baseline,
     bench_search,
+    bench_table_generation,
+    bench_table_generation_all,
     bench_multi_sfmt,
 );
 
@@ -468,6 +521,7 @@ criterion_group!(
     bench_throughput,
     bench_baseline,
     bench_search,
+    bench_table_generation,
 );
 
 criterion_main!(benches);
