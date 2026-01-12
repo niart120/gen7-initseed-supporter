@@ -1,3 +1,14 @@
 [workspace]
 resolver = "2"
 members = ["crates/gen7seed-rainbow", "crates/gen7seed-cli"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+lto = true
+codegen-units = 1
+panic = "abort"
