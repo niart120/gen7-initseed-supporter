@@ -50,9 +50,7 @@ fn bench_sfmt(c: &mut Criterion) {
     let mut group = c.benchmark_group("sfmt");
 
     // 初期化ベンチマーク
-    group.bench_function("init", |b| {
-        b.iter(|| Sfmt::new(black_box(12345)))
-    });
+    group.bench_function("init", |b| b.iter(|| Sfmt::new(black_box(12345))));
 
     // 乱数生成ベンチマーク（異なる呼び出し回数）
     for count in [100, 1000, 10000] {
