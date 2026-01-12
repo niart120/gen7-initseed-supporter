@@ -7,7 +7,7 @@ use crate::constants::MAX_CHAIN_LENGTH;
 use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
 
 #[cfg(feature = "multi-sfmt")]
-use crate::constants::NEEDLE_STATES;
+use crate::domain::hash::gen_hash_x16;
 #[cfg(feature = "multi-sfmt")]
 use crate::domain::sfmt::MultipleSfmt;
 
@@ -101,16 +101,11 @@ pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEnt
             multi_sfmt.next_u64x16();
         }
 
+        // Collect 8 rounds of random values for hash calculation
+        let rand_rounds: [[u64; 16]; 8] = std::array::from_fn(|_| multi_sfmt.next_u64x16());
+
         // Calculate 16 hashes simultaneously
-        let mut hashes = [0u64; 16];
-        for _ in 0..8 {
-            let rands = multi_sfmt.next_u64x16();
-            for i in 0..16 {
-                hashes[i] = hashes[i]
-                    .wrapping_mul(NEEDLE_STATES)
-                    .wrapping_add(rands[i] % NEEDLE_STATES);
-            }
-        }
+        let hashes = gen_hash_x16(rand_rounds);
 
         // Apply reduce to all 16 hashes
         for i in 0..16 {

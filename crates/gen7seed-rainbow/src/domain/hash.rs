@@ -52,6 +52,33 @@ pub fn reduce_hash(hash: u64, column: u32) -> u32 {
     ((hash + column as u64) & 0xFFFFFFFF) as u32
 }
 
+// =============================================================================
+// 16-parallel hash functions (multi-sfmt feature)
+// =============================================================================
+
+/// Calculate 16 hash values from 8 rounds of 16 random values each
+///
+/// This is the 16-parallel version of `gen_hash`, designed to work with
+/// `MultipleSfmt::next_u64x16()` output.
+///
+/// # Arguments
+/// * `rand_rounds` - 8 rounds of 16 random u64 values (one per SFMT instance)
+///
+/// # Returns
+/// 16 hash values, one for each parallel SFMT instance
+#[cfg(feature = "multi-sfmt")]
+pub fn gen_hash_x16(rand_rounds: [[u64; 16]; 8]) -> [u64; 16] {
+    let mut hashes = [0u64; 16];
+    for round in rand_rounds {
+        for i in 0..16 {
+            hashes[i] = hashes[i]
+                .wrapping_mul(NEEDLE_STATES)
+                .wrapping_add(round[i] % NEEDLE_STATES);
+        }
+    }
+    hashes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
