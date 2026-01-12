@@ -5,10 +5,10 @@
 //! - Search for initial seeds from needle values (clock hand positions)
 //! - Full SFMT-19937 implementation compatible with Gen 7 Pokemon games
 
+pub mod app;
 pub mod constants;
 pub mod domain;
 pub mod infra;
-pub mod app;
 
 // Re-export commonly used types
 pub use constants::*;

@@ -4,7 +4,7 @@
 //! using the rainbow table algorithm.
 
 use crate::constants::MAX_CHAIN_LENGTH;
-use crate::domain::chain::{verify_chain, ChainEntry};
+use crate::domain::chain::{ChainEntry, verify_chain};
 use crate::domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash};
 use std::collections::HashSet;
 

@@ -21,7 +21,10 @@ fn parse_reference_values() -> Vec<u64> {
         if !in_init_gen_rand {
             continue;
         }
-        values.extend(line.split_whitespace().map(|v| v.parse::<u64>().expect("parse reference value")));
+        values.extend(
+            line.split_whitespace()
+                .map(|v| v.parse::<u64>().expect("parse reference value")),
+        );
     }
 
     values
@@ -30,7 +33,11 @@ fn parse_reference_values() -> Vec<u64> {
 #[test]
 fn sfmt_matches_official_19937_64_reference() {
     let reference = parse_reference_values();
-    assert!(reference.len() >= 1000, "reference length: {}", reference.len());
+    assert!(
+        reference.len() >= 1000,
+        "reference length: {}",
+        reference.len()
+    );
 
     let mut rng = Sfmt::new(4321);
     for (i, expected) in reference.iter().enumerate().take(1000) {

@@ -3,7 +3,7 @@
 //! This module provides functions for generating rainbow tables.
 
 use crate::constants::NUM_CHAINS;
-use crate::domain::chain::{compute_chain, ChainEntry};
+use crate::domain::chain::{ChainEntry, compute_chain};
 
 /// Generate a rainbow table
 ///

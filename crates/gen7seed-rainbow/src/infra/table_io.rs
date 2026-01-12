@@ -21,7 +21,10 @@ pub fn load_table(path: impl AsRef<Path>) -> io::Result<Vec<ChainEntry>> {
     for _ in 0..num_entries {
         let start_seed = reader.read_u32::<LittleEndian>()?;
         let end_seed = reader.read_u32::<LittleEndian>()?;
-        entries.push(ChainEntry { start_seed, end_seed });
+        entries.push(ChainEntry {
+            start_seed,
+            end_seed,
+        });
     }
 
     Ok(entries)

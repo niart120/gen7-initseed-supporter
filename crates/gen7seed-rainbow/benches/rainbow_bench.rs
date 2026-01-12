@@ -6,7 +6,7 @@
 //! - シングルスレッド検索: < 40秒
 //! - メモリ使用量: < 200MB
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
     constants::{NEEDLE_COUNT, NEEDLE_STATES},
     domain::chain::compute_chain,
@@ -70,12 +70,7 @@ fn bench_hash(c: &mut Criterion) {
     let hash_value = 123456789u64;
     let column = 100u32;
     group.bench_function("reduce_hash", |b| {
-        b.iter(|| {
-            black_box(reduce_hash(
-                black_box(hash_value),
-                black_box(column),
-            ))
-        })
+        b.iter(|| black_box(reduce_hash(black_box(hash_value), black_box(column))))
     });
 
     group.finish();
@@ -119,20 +114,13 @@ fn bench_chain_throughput(c: &mut Criterion) {
     // チェーン生成のスループット
     for count in [10, 100].iter() {
         group.throughput(Throughput::Elements(*count as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(count),
-            count,
-            |b, &count| {
-                b.iter(|| {
-                    for i in 0..count {
-                        black_box(compute_chain(
-                            black_box(i as u32),
-                            black_box(consumption),
-                        ));
-                    }
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
+            b.iter(|| {
+                for i in 0..count {
+                    black_box(compute_chain(black_box(i as u32), black_box(consumption)));
+                }
+            })
+        });
     }
 
     group.finish();

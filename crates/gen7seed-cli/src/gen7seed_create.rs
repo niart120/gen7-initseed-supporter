@@ -34,10 +34,11 @@ fn main() {
         );
     }
 
-    println!("Generating rainbow table for consumption {}...", consumption);
     println!(
-        "This will take a long time. Press Ctrl+C to cancel."
+        "Generating rainbow table for consumption {}...",
+        consumption
     );
+    println!("This will take a long time. Press Ctrl+C to cancel.");
 
     let start = Instant::now();
 
@@ -72,10 +73,7 @@ fn main() {
     let file_size = std::fs::metadata(&output_path)
         .map(|m| m.len())
         .unwrap_or(0);
-    println!(
-        "File size: {:.2} MB",
-        file_size as f64 / (1024.0 * 1024.0)
-    );
+    println!("File size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
 
     println!("Done! Run gen7seed_sort {} to sort the table.", consumption);
 }

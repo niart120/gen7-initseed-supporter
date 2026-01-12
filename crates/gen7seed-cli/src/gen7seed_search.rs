@@ -86,7 +86,11 @@ fn main() {
         let mut valid = true;
         for (i, &v) in values.iter().enumerate() {
             if v > 16 {
-                eprintln!("Error: Value at position {} is {} (must be 0-16).", i + 1, v);
+                eprintln!(
+                    "Error: Value at position {} is {} (must be 0-16).",
+                    i + 1,
+                    v
+                );
                 valid = false;
             }
         }

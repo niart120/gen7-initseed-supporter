@@ -43,6 +43,11 @@ cargo run --release --bin gen7seed_search -- 417
 
 ## 開発者向け情報 (Development)
 
+### コード整形
+```powershell
+cargo fmt
+```
+
 ### テスト実行
 ```powershell
 cargo test

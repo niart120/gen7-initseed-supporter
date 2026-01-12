@@ -91,6 +91,9 @@ cargo run --release --bin gen7seed_sort -- 417
 # 初期Seed検索
 cargo run --release --bin gen7seed_search -- 417
 
+# コード整形
+cargo fmt
+
 # ベンチマーク（criterionセットアップ後）
 cargo bench
 ```
@@ -107,7 +110,7 @@ cargo bench
 ## コーディング規約
 - Rust edition 2024 に準拠
 - clippy の警告をゼロに
-- rustfmt でフォーマット統一
+- rustfmt (nightly-2026-01-10) でフォーマット統一。コミット前に `cargo fmt` を実行すること。
 - 技術文書は事実ベース・簡潔に記述
 - t_wada氏が推奨するテスト駆動開発(TDD)指針/コーディング指針を遵守
   - Code      → How

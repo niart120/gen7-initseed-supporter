@@ -22,7 +22,10 @@ pub struct ChainEntry {
 impl ChainEntry {
     /// Create a new chain entry
     pub fn new(start_seed: u32, end_seed: u32) -> Self {
-        Self { start_seed, end_seed }
+        Self {
+            start_seed,
+            end_seed,
+        }
     }
 }
 

@@ -13,7 +13,9 @@ use crate::domain::sfmt::Sfmt;
 pub fn gen_hash(rand: [u64; NEEDLE_COUNT]) -> u64 {
     let mut r: u64 = 0;
     for val in rand {
-        r = r.wrapping_mul(NEEDLE_STATES).wrapping_add(val % NEEDLE_STATES);
+        r = r
+            .wrapping_mul(NEEDLE_STATES)
+            .wrapping_add(val % NEEDLE_STATES);
     }
     r
 }

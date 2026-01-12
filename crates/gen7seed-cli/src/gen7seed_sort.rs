@@ -4,7 +4,9 @@
 //! Example: gen7seed_sort 417
 
 use gen7seed_rainbow::constants::SUPPORTED_CONSUMPTIONS;
-use gen7seed_rainbow::infra::table_io::{get_sorted_table_path, get_table_path, load_table, save_table};
+use gen7seed_rainbow::infra::table_io::{
+    get_sorted_table_path, get_table_path, load_table, save_table,
+};
 use gen7seed_rainbow::infra::table_sort::sort_table;
 use std::env;
 use std::time::Instant;
@@ -62,10 +64,7 @@ fn main() {
     let file_size = std::fs::metadata(&output_path)
         .map(|m| m.len())
         .unwrap_or(0);
-    println!(
-        "File size: {:.2} MB",
-        file_size as f64 / (1024.0 * 1024.0)
-    );
+    println!("File size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
 
     println!("Done! The table is ready for searching.");
 }
