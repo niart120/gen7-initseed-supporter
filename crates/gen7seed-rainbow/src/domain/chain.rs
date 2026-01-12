@@ -7,9 +7,7 @@ use crate::constants::MAX_CHAIN_LENGTH;
 use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
 
 #[cfg(feature = "multi-sfmt")]
-use crate::domain::hash::gen_hash_x16;
-#[cfg(feature = "multi-sfmt")]
-use crate::domain::sfmt::MultipleSfmt;
+use crate::domain::hash::gen_hash_from_seed_x16;
 
 /// Chain entry structure
 ///
@@ -89,21 +87,11 @@ pub fn verify_chain(
 /// using SIMD operations, providing significant performance improvement.
 #[cfg(feature = "multi-sfmt")]
 pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEntry; 16] {
-    let mut multi_sfmt = MultipleSfmt::default();
     let mut current_seeds = start_seeds;
 
     for n in 0..MAX_CHAIN_LENGTH {
-        // Initialize with current seeds
-        multi_sfmt.init(current_seeds);
-
-        // Skip consumption random numbers (optimized)
-        multi_sfmt.skip(consumption as usize);
-
-        // Collect 8 rounds of random values for hash calculation
-        let rand_rounds: [[u64; 16]; 8] = std::array::from_fn(|_| multi_sfmt.next_u64x16());
-
         // Calculate 16 hashes simultaneously
-        let hashes = gen_hash_x16(rand_rounds);
+        let hashes = gen_hash_from_seed_x16(current_seeds, consumption);
 
         // Apply reduce to all 16 hashes
         for i in 0..16 {
