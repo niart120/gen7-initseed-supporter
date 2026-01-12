@@ -28,10 +28,8 @@ pub fn gen_hash(rand: [u64; NEEDLE_COUNT]) -> u64 {
 pub fn gen_hash_from_seed(seed: u32, consumption: i32) -> u64 {
     let mut sfmt = Sfmt::new(seed);
 
-    // Skip consumption random numbers
-    for _ in 0..consumption {
-        sfmt.gen_rand_u64();
-    }
+    // Skip consumption random numbers (optimized)
+    sfmt.skip(consumption as usize);
 
     // Get 8 random numbers and calculate hash
     let mut rand = [0u64; NEEDLE_COUNT];
@@ -77,6 +75,37 @@ pub fn gen_hash_x16(rand_rounds: [[u64; 16]; 8]) -> [u64; 16] {
         }
     }
     hashes
+}
+
+/// Calculate 16 hash values from 16 seeds and consumption
+///
+/// This is the 16-parallel version of `gen_hash_from_seed`, designed to work with
+/// `MultipleSfmt` for batch processing.
+///
+/// 1. Initialize MultipleSfmt with 16 seeds
+/// 2. Skip consumption random numbers
+/// 3. Get the next 8 rounds of 16 random numbers and compute hashes
+///
+/// # Arguments
+/// * `seeds` - 16 seed values
+/// * `consumption` - Number of random numbers to skip
+///
+/// # Returns
+/// 16 hash values, one for each seed
+#[cfg(feature = "multi-sfmt")]
+pub fn gen_hash_from_seed_x16(seeds: [u32; 16], consumption: i32) -> [u64; 16] {
+    use crate::domain::sfmt::MultipleSfmt;
+
+    let mut multi_sfmt = MultipleSfmt::default();
+    multi_sfmt.init(seeds);
+
+    // Skip consumption random numbers (optimized)
+    multi_sfmt.skip(consumption as usize);
+
+    // Collect 8 rounds of random values for hash calculation
+    let rand_rounds: [[u64; 16]; 8] = std::array::from_fn(|_| multi_sfmt.next_u64x16());
+
+    gen_hash_x16(rand_rounds)
 }
 
 #[cfg(test)]
@@ -163,5 +192,125 @@ mod tests {
         // Should wrap around correctly
         let result = reduce_hash(hash, 0);
         assert_eq!(result, 0xFFFFFFFFu32);
+    }
+
+    // =========================================================================
+    // Skip optimization compatibility tests
+    // =========================================================================
+
+    /// Helper function that computes hash using sequential skip (for testing)
+    fn gen_hash_from_seed_sequential(seed: u32, consumption: i32) -> u64 {
+        let mut sfmt = Sfmt::new(seed);
+
+        // Skip consumption random numbers sequentially
+        for _ in 0..consumption {
+            sfmt.gen_rand_u64();
+        }
+
+        // Get 8 random numbers and calculate hash
+        let mut rand = [0u64; NEEDLE_COUNT];
+        for r in rand.iter_mut() {
+            *r = sfmt.gen_rand_u64() % NEEDLE_STATES;
+        }
+
+        gen_hash(rand)
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_skip_matches_sequential() {
+        // Verify that skip optimization produces identical results
+        let test_cases = [
+            (0, 0),
+            (0, 100),
+            (0, 311),
+            (0, 312),
+            (0, 313),
+            (0x12345678, 417),
+            (0xDEADBEEF, 477),
+            (0xFFFFFFFF, 1000),
+        ];
+
+        for (seed, consumption) in test_cases {
+            let hash_skip = gen_hash_from_seed(seed, consumption);
+            let hash_seq = gen_hash_from_seed_sequential(seed, consumption);
+            assert_eq!(
+                hash_skip, hash_seq,
+                "Hash mismatch for seed={:#x}, consumption={}",
+                seed, consumption
+            );
+        }
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_consumption_zero() {
+        // consumption=0 should work correctly
+        let hash = gen_hash_from_seed(12345, 0);
+        let hash_seq = gen_hash_from_seed_sequential(12345, 0);
+        assert_eq!(hash, hash_seq);
+    }
+
+    #[test]
+    fn test_gen_hash_from_seed_consumption_417_reference() {
+        // Reference test for consumption=417 (commonly used value)
+        // This ensures the optimization doesn't change behavior
+        let hash1 = gen_hash_from_seed(0, 417);
+        let hash2 = gen_hash_from_seed(0, 417);
+        assert_eq!(hash1, hash2, "Hash should be deterministic");
+
+        let hash_seq = gen_hash_from_seed_sequential(0, 417);
+        assert_eq!(hash1, hash_seq, "Skip should match sequential");
+    }
+
+    // =========================================================================
+    // gen_hash_from_seed_x16 tests (multi-sfmt feature)
+    // =========================================================================
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_gen_hash_from_seed_x16_matches_single() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+        let consumption = 417;
+
+        let hashes_x16 = gen_hash_from_seed_x16(seeds, consumption);
+
+        for (i, &seed) in seeds.iter().enumerate() {
+            let single_hash = gen_hash_from_seed(seed, consumption);
+            assert_eq!(
+                hashes_x16[i], single_hash,
+                "Hash mismatch at index {} for seed {}",
+                i, seed
+            );
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_gen_hash_from_seed_x16_deterministic() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| 12345 + i as u32);
+        let consumption = 417;
+
+        let hashes1 = gen_hash_from_seed_x16(seeds, consumption);
+        let hashes2 = gen_hash_from_seed_x16(seeds, consumption);
+
+        assert_eq!(hashes1, hashes2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_gen_hash_from_seed_x16_various_consumption() {
+        for consumption in [0, 100, 312, 417, 1000] {
+            let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+
+            let hashes_x16 = gen_hash_from_seed_x16(seeds, consumption);
+
+            for (i, &seed) in seeds.iter().enumerate() {
+                let single_hash = gen_hash_from_seed(seed, consumption);
+                assert_eq!(
+                    hashes_x16[i], single_hash,
+                    "Hash mismatch at index {} for seed {} with consumption {}",
+                    i, seed, consumption
+                );
+            }
+        }
     }
 }

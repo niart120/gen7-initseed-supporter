@@ -86,6 +86,53 @@ fn bench_sfmt(c: &mut Criterion) {
 }
 
 // ============================================================================
+// SFMT Skip Benchmarks
+// ============================================================================
+
+fn bench_sfmt_skip(c: &mut Criterion) {
+    let mut group = c.benchmark_group("sfmt_skip");
+
+    // Compare skip() vs sequential gen_rand_u64() for various skip counts
+    for &skip_count in &[100, 312, 417, 1000] {
+        // Sequential skip (baseline)
+        group.bench_with_input(
+            BenchmarkId::new("sequential", skip_count),
+            &skip_count,
+            |b, &skip_count| {
+                b.iter_batched(
+                    || Sfmt::new(0x12345678),
+                    |mut sfmt| {
+                        for _ in 0..skip_count {
+                            black_box(sfmt.gen_rand_u64());
+                        }
+                        sfmt
+                    },
+                    criterion::BatchSize::SmallInput,
+                )
+            },
+        );
+
+        // Optimized skip()
+        group.bench_with_input(
+            BenchmarkId::new("skip", skip_count),
+            &skip_count,
+            |b, &skip_count| {
+                b.iter_batched(
+                    || Sfmt::new(0x12345678),
+                    |mut sfmt| {
+                        sfmt.skip(skip_count);
+                        sfmt
+                    },
+                    criterion::BatchSize::SmallInput,
+                )
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ============================================================================
 // Hash Benchmarks
 // ============================================================================
 
@@ -368,6 +415,7 @@ fn bench_multi_sfmt(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_sfmt,
+    bench_sfmt_skip,
     bench_hash,
     bench_chain,
     bench_table_sort,
@@ -380,6 +428,7 @@ criterion_group!(
 criterion_group!(
     benches,
     bench_sfmt,
+    bench_sfmt_skip,
     bench_hash,
     bench_chain,
     bench_table_sort,

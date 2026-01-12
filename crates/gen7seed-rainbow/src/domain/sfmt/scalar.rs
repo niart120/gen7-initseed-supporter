@@ -67,6 +67,42 @@ impl Sfmt {
         low | (high << 32)
     }
 
+    /// Skip n random numbers (u64 units)
+    ///
+    /// This is more efficient than calling `gen_rand_u64()` n times
+    /// because it directly updates the index and only regenerates
+    /// blocks when necessary.
+    ///
+    /// # Arguments
+    /// * `n` - Number of u64 random numbers to skip
+    pub fn skip(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let remaining_in_block = BLOCK_SIZE64 - self.idx;
+
+        if n <= remaining_in_block {
+            // Case 1: Skip within current block
+            self.idx += n;
+        } else {
+            // Case 2: Skip across blocks
+            let n_after_current = n - remaining_in_block;
+            let full_blocks = n_after_current / BLOCK_SIZE64;
+            let final_idx = n_after_current % BLOCK_SIZE64;
+
+            // Skip to end of current block and regenerate
+            self.gen_rand_all();
+
+            // Regenerate additional full blocks
+            for _ in 0..full_blocks {
+                self.gen_rand_all();
+            }
+
+            self.idx = final_idx;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Internal methods
     // -------------------------------------------------------------------------
@@ -201,5 +237,99 @@ mod tests {
         // Should not panic and should produce valid output
         let val = sfmt.gen_rand_u64();
         let _ = val; // Just verify it runs
+    }
+
+    // =========================================================================
+    // Skip tests
+    // =========================================================================
+
+    #[test]
+    fn test_skip_zero() {
+        let mut sfmt_skip = Sfmt::new(0x12345678);
+        sfmt_skip.skip(0);
+
+        let mut sfmt_seq = Sfmt::new(0x12345678);
+
+        // Should match first value
+        assert_eq!(sfmt_skip.gen_rand_u64(), sfmt_seq.gen_rand_u64());
+    }
+
+    #[test]
+    fn test_skip_matches_sequential() {
+        for skip_count in [1, 100, 311, 312, 313, 417, 624, 1000] {
+            let mut sfmt_skip = Sfmt::new(0x12345678);
+            sfmt_skip.skip(skip_count);
+
+            let mut sfmt_seq = Sfmt::new(0x12345678);
+            for _ in 0..skip_count {
+                sfmt_seq.gen_rand_u64();
+            }
+
+            // Verify next 100 values match
+            for i in 0..100 {
+                assert_eq!(
+                    sfmt_skip.gen_rand_u64(),
+                    sfmt_seq.gen_rand_u64(),
+                    "Mismatch at iteration {} after skipping {}",
+                    i,
+                    skip_count
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_skip_exactly_one_block() {
+        let mut sfmt_skip = Sfmt::new(0);
+        sfmt_skip.skip(BLOCK_SIZE64);
+
+        let mut sfmt_seq = Sfmt::new(0);
+        for _ in 0..BLOCK_SIZE64 {
+            sfmt_seq.gen_rand_u64();
+        }
+
+        assert_eq!(sfmt_skip.gen_rand_u64(), sfmt_seq.gen_rand_u64());
+    }
+
+    #[test]
+    fn test_skip_two_blocks() {
+        let mut sfmt_skip = Sfmt::new(0xDEADBEEF);
+        sfmt_skip.skip(BLOCK_SIZE64 * 2);
+
+        let mut sfmt_seq = Sfmt::new(0xDEADBEEF);
+        for _ in 0..(BLOCK_SIZE64 * 2) {
+            sfmt_seq.gen_rand_u64();
+        }
+
+        for i in 0..50 {
+            assert_eq!(
+                sfmt_skip.gen_rand_u64(),
+                sfmt_seq.gen_rand_u64(),
+                "Mismatch at iteration {} after skipping two blocks",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_skip_partial_then_full_block() {
+        // Skip 100 first, then check consistency
+        let mut sfmt_skip = Sfmt::new(0);
+        sfmt_skip.skip(100);
+        sfmt_skip.skip(BLOCK_SIZE64); // Another full block
+
+        let mut sfmt_seq = Sfmt::new(0);
+        for _ in 0..(100 + BLOCK_SIZE64) {
+            sfmt_seq.gen_rand_u64();
+        }
+
+        for i in 0..50 {
+            assert_eq!(
+                sfmt_skip.gen_rand_u64(),
+                sfmt_seq.gen_rand_u64(),
+                "Mismatch at iteration {}",
+                i
+            );
+        }
     }
 }

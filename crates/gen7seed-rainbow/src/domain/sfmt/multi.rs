@@ -108,6 +108,42 @@ impl MultipleSfmt {
         std::array::from_fn(|i| lo_arr[i] as u64 | ((hi_arr[i] as u64) << 32))
     }
 
+    /// Skip n random numbers for all 16 parallel SFMTs (u64 units)
+    ///
+    /// This is more efficient than calling `next_u64x16()` n times
+    /// because it directly updates the index and only regenerates
+    /// blocks when necessary.
+    ///
+    /// # Arguments
+    /// * `n` - Number of u64 random numbers to skip (per SFMT instance)
+    pub fn skip(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let remaining_in_block = BLOCK_SIZE64 - self.idx;
+
+        if n <= remaining_in_block {
+            // Case 1: Skip within current block
+            self.idx += n;
+        } else {
+            // Case 2: Skip across blocks
+            let n_after_current = n - remaining_in_block;
+            let full_blocks = n_after_current / BLOCK_SIZE64;
+            let final_idx = n_after_current % BLOCK_SIZE64;
+
+            // Skip to end of current block and regenerate
+            self.gen_rand_all();
+
+            // Regenerate additional full blocks
+            for _ in 0..full_blocks {
+                self.gen_rand_all();
+            }
+
+            self.idx = final_idx;
+        }
+    }
+
     // =========================================================================
     // Internal methods
     // =========================================================================
@@ -331,6 +367,90 @@ mod tests {
                     iteration,
                     i
                 );
+            }
+        }
+    }
+
+    // =========================================================================
+    // Skip tests
+    // =========================================================================
+
+    #[test]
+    fn test_multi_sfmt_skip_zero() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+
+        let mut multi_skip = MultipleSfmt::default();
+        multi_skip.init(seeds);
+        multi_skip.skip(0);
+
+        let mut multi_seq = MultipleSfmt::default();
+        multi_seq.init(seeds);
+
+        assert_eq!(multi_skip.next_u64x16(), multi_seq.next_u64x16());
+    }
+
+    #[test]
+    fn test_multi_sfmt_skip_matches_single() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+        let skip_count = 417;
+
+        let mut multi = MultipleSfmt::default();
+        multi.init(seeds);
+        multi.skip(skip_count);
+
+        let mut singles: Vec<_> = seeds
+            .iter()
+            .map(|&s| {
+                let mut sfmt = Sfmt::new(s);
+                sfmt.skip(skip_count);
+                sfmt
+            })
+            .collect();
+
+        for iteration in 0..100 {
+            let multi_result = multi.next_u64x16();
+            for (i, single) in singles.iter_mut().enumerate() {
+                assert_eq!(
+                    multi_result[i],
+                    single.gen_rand_u64(),
+                    "Mismatch at iteration {}, lane {}",
+                    iteration,
+                    i
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_multi_sfmt_skip_various_counts() {
+        for skip_count in [1, 100, 311, 312, 313, 417, 624, 1000] {
+            let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+
+            let mut multi = MultipleSfmt::default();
+            multi.init(seeds);
+            multi.skip(skip_count);
+
+            let mut singles: Vec<_> = seeds
+                .iter()
+                .map(|&s| {
+                    let mut sfmt = Sfmt::new(s);
+                    sfmt.skip(skip_count);
+                    sfmt
+                })
+                .collect();
+
+            for iteration in 0..50 {
+                let multi_result = multi.next_u64x16();
+                for (i, single) in singles.iter_mut().enumerate() {
+                    assert_eq!(
+                        multi_result[i],
+                        single.gen_rand_u64(),
+                        "Mismatch at iteration {}, lane {}, skip_count {}",
+                        iteration,
+                        i,
+                        skip_count
+                    );
+                }
             }
         }
     }
