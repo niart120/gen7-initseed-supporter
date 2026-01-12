@@ -96,10 +96,8 @@ pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEnt
         // Initialize with current seeds
         multi_sfmt.init(current_seeds);
 
-        // Skip consumption random numbers
-        for _ in 0..consumption {
-            multi_sfmt.next_u64x16();
-        }
+        // Skip consumption random numbers (optimized)
+        multi_sfmt.skip(consumption as usize);
 
         // Collect 8 rounds of random values for hash calculation
         let rand_rounds: [[u64; 16]; 8] = std::array::from_fn(|_| multi_sfmt.next_u64x16());
