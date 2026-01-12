@@ -34,7 +34,7 @@ use gen7seed_rainbow::{
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::domain::chain::compute_chains_x16;
 #[cfg(feature = "multi-sfmt")]
-use gen7seed_rainbow::domain::multi_sfmt::MultipleSfmt;
+use gen7seed_rainbow::domain::sfmt::MultipleSfmt;
 
 // ============================================================================
 // Helper Functions

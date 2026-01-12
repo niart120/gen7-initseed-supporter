@@ -9,7 +9,7 @@ use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
 #[cfg(feature = "multi-sfmt")]
 use crate::constants::NEEDLE_STATES;
 #[cfg(feature = "multi-sfmt")]
-use crate::domain::multi_sfmt::MultipleSfmt;
+use crate::domain::sfmt::MultipleSfmt;
 
 /// Chain entry structure
 ///

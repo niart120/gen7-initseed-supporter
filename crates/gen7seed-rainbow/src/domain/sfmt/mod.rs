@@ -55,6 +55,13 @@ pub mod scalar;
 #[cfg(feature = "simd")]
 pub use scalar::Sfmt as SfmtScalar;
 
+// 16-parallel SFMT implementation
+#[cfg(feature = "multi-sfmt")]
+pub mod multi;
+
+#[cfg(feature = "multi-sfmt")]
+pub use multi::MultipleSfmt;
+
 // =============================================================================
 // Tests that apply to both implementations
 // =============================================================================
