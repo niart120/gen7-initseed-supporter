@@ -48,6 +48,11 @@ cargo run --release --bin gen7seed_search -- 417
 cargo fmt
 ```
 
+### 静的解析 (Clippy)
+```powershell
+cargo clippy --all-targets --all-features
+```
+
 ### テスト実行
 ```powershell
 cargo test

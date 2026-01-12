@@ -94,6 +94,9 @@ cargo run --release --bin gen7seed_search -- 417
 # コード整形
 cargo fmt
 
+# 静的解析
+cargo clippy --all-targets --all-features
+
 # ベンチマーク（criterionセットアップ後）
 cargo bench
 ```
@@ -111,6 +114,7 @@ cargo bench
 - Rust edition 2024 に準拠
 - clippy の警告をゼロに
 - rustfmt (nightly-2026-01-10) でフォーマット統一。コミット前に `cargo fmt` を実行すること。
+- clippy は `cargo clippy --all-targets --all-features` をコミット前に実行し、警告ゼロを維持すること。
 - 技術文書は事実ベース・簡潔に記述
 - t_wada氏が推奨するテスト駆動開発(TDD)指針/コーディング指針を遵守
   - Code      → How
