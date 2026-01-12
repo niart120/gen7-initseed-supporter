@@ -31,6 +31,11 @@ use gen7seed_rainbow::{
     infra::table_sort::{deduplicate_table, sort_table},
 };
 
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::domain::chain::compute_chains_x16;
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::domain::multi_sfmt::MultipleSfmt;
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -281,9 +286,97 @@ fn bench_baseline(c: &mut Criterion) {
 }
 
 // ============================================================================
+// Multi-SFMT Benchmarks
+// ============================================================================
+
+#[cfg(feature = "multi-sfmt")]
+fn bench_multi_sfmt(c: &mut Criterion) {
+    let mut group = c.benchmark_group("multi_sfmt");
+    let consumption = 417;
+
+    // MultipleSfmt initialization
+    group.bench_function("init_x16", |b| {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+        let mut multi = MultipleSfmt::default();
+        b.iter(|| multi.init(black_box(seeds)))
+    });
+
+    // MultipleSfmt random generation
+    group.bench_function("gen_rand_x16_1000", |b| {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+        let mut multi = MultipleSfmt::default();
+        multi.init(seeds);
+        b.iter(|| {
+            for _ in 0..1000 {
+                black_box(multi.next_u64x16());
+            }
+        })
+    });
+
+    // Compare: 16 chains using single SFMT (sequential)
+    group.bench_function("chain_single_x16", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(16);
+            for seed in 0..16u32 {
+                results.push(compute_chain(black_box(seed), consumption));
+            }
+            results
+        })
+    });
+
+    // Compare: 16 chains using MultipleSfmt (parallel SIMD)
+    group.bench_function("chain_multi_x16", |b| {
+        b.iter(|| {
+            let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+            compute_chains_x16(black_box(seeds), consumption)
+        })
+    });
+
+    // Throughput: 64 chains comparison
+    group.throughput(Throughput::Elements(64));
+
+    group.bench_function("chain_single_x64", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(64);
+            for seed in 0..64u32 {
+                results.push(compute_chain(black_box(seed), consumption));
+            }
+            results
+        })
+    });
+
+    group.bench_function("chain_multi_x64", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(64);
+            for batch in 0..4 {
+                let seeds: [u32; 16] = std::array::from_fn(|i| (batch * 16 + i) as u32);
+                let batch_results = compute_chains_x16(black_box(seeds), consumption);
+                results.extend(batch_results);
+            }
+            results
+        })
+    });
+
+    group.finish();
+}
+
+// ============================================================================
 // Criterion Groups
 // ============================================================================
 
+#[cfg(feature = "multi-sfmt")]
+criterion_group!(
+    benches,
+    bench_sfmt,
+    bench_hash,
+    bench_chain,
+    bench_table_sort,
+    bench_throughput,
+    bench_baseline,
+    bench_multi_sfmt,
+);
+
+#[cfg(not(feature = "multi-sfmt"))]
 criterion_group!(
     benches,
     bench_sfmt,

@@ -21,6 +21,7 @@ default = ["simd"]
 parallel = []
 mmap = []
 simd = []  # std::simd を使用（nightly必須）
+multi-sfmt = ["simd"]  # 16並列SFMT（nightly必須）
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

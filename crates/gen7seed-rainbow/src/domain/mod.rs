@@ -5,3 +5,6 @@
 pub mod chain;
 pub mod hash;
 pub mod sfmt;
+
+#[cfg(feature = "multi-sfmt")]
+pub mod multi_sfmt;

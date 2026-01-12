@@ -6,6 +6,11 @@
 use crate::constants::MAX_CHAIN_LENGTH;
 use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
 
+#[cfg(feature = "multi-sfmt")]
+use crate::constants::NEEDLE_STATES;
+#[cfg(feature = "multi-sfmt")]
+use crate::domain::multi_sfmt::MultipleSfmt;
+
 /// Chain entry structure
 ///
 /// File format: (start_seed, end_seed)
@@ -72,6 +77,49 @@ pub fn verify_chain(
     } else {
         None
     }
+}
+
+// =============================================================================
+// 16-parallel chain generation (multi-sfmt feature)
+// =============================================================================
+
+/// Compute 16 chains simultaneously using MultipleSfmt
+///
+/// This function computes chains from 16 different starting seeds in parallel
+/// using SIMD operations, providing significant performance improvement.
+#[cfg(feature = "multi-sfmt")]
+pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEntry; 16] {
+    let mut multi_sfmt = MultipleSfmt::default();
+    let mut current_seeds = start_seeds;
+
+    for n in 0..MAX_CHAIN_LENGTH {
+        // Initialize with current seeds
+        multi_sfmt.init(current_seeds);
+
+        // Skip consumption random numbers
+        for _ in 0..consumption {
+            multi_sfmt.next_u64x16();
+        }
+
+        // Calculate 16 hashes simultaneously
+        let mut hashes = [0u64; 16];
+        for _ in 0..8 {
+            let rands = multi_sfmt.next_u64x16();
+            for i in 0..16 {
+                hashes[i] = hashes[i]
+                    .wrapping_mul(NEEDLE_STATES)
+                    .wrapping_add(rands[i] % NEEDLE_STATES);
+            }
+        }
+
+        // Apply reduce to all 16 hashes
+        for i in 0..16 {
+            current_seeds[i] = reduce_hash(hashes[i], n);
+        }
+    }
+
+    // Create result entries
+    std::array::from_fn(|i| ChainEntry::new(start_seeds[i], current_seeds[i]))
 }
 
 #[cfg(test)]
@@ -149,5 +197,52 @@ mod tests {
         // verify_chain should find the seed at column 5
         let result = verify_chain(seed, 5, target_hash, consumption);
         assert_eq!(result, Some(s));
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_compute_chains_x16_matches_single() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| 100 + i as u32);
+        let consumption = 417;
+
+        let multi_results = compute_chains_x16(seeds, consumption);
+
+        for (i, seed) in seeds.iter().enumerate() {
+            let single_result = compute_chain(*seed, consumption);
+            assert_eq!(
+                multi_results[i], single_result,
+                "Mismatch at index {} for seed {}",
+                i, seed
+            );
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_compute_chains_x16_deterministic() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| 12345 + i as u32);
+        let consumption = 417;
+
+        let results1 = compute_chains_x16(seeds, consumption);
+        let results2 = compute_chains_x16(seeds, consumption);
+
+        assert_eq!(results1, results2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_compute_chains_x16_different_consumption() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+
+        let results_417 = compute_chains_x16(seeds, 417);
+        let results_477 = compute_chains_x16(seeds, 477);
+
+        for i in 0..16 {
+            assert_ne!(
+                results_417[i].end_seed, results_477[i].end_seed,
+                "Entry {} should differ between consumption 417 and 477",
+                i
+            );
+        }
     }
 }
