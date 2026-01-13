@@ -24,6 +24,7 @@
 gen7-initseed-supporter/
 |-- .github/
 |   |-- copilot-instructions.md       # Copilot用プロジェクト指示
+|   |-- instructions/                 # 追加のCopilot指示
 |   `-- workflows/
 |-- spec/                             # 仕様書・設計ドキュメント
 |   |-- initial/                      # 初期設計ドキュメント
@@ -35,23 +36,28 @@ gen7-initseed-supporter/
 |   |   |-- Cargo.toml
 |   |   `-- src/
 |   |       |-- gen7seed_create.rs
-|   |       `-- gen7seed_search.rs
+|   |       |-- gen7seed_search.rs
+|   |       `-- gen7seed_sort.rs
 |   `-- gen7seed-rainbow/             # レインボーテーブル処理（Rust）
 |       |-- Cargo.toml
 |       |-- README.md
 |       |-- benches/
 |       |   |-- rainbow_bench.rs      # コア処理ベンチマーク
-|       |   `-- table_bench.rs        # テーブル検索ベンチマーク
+|       |   |-- table_bench.rs        # テーブル検索ベンチマーク
+|       |   `-- chain_generation_bench.rs  # チェーン生成ベンチマーク
 |       |-- examples/
-|       |   `-- detection_rate.rs     # 検出率評価スクリプト
+|       |   |-- detection_rate.rs           # 検出率評価スクリプト
+|       |   `-- extract_missing_seeds.rs    # 欠落シード抽出スクリプト
 |       |-- src/
 |       |   |-- constants.rs
 |       |   |-- lib.rs
 |       |   |-- app/
+|       |   |   |-- coverage.rs       # 欠落シード抽出ワークフロー
 |       |   |   |-- generator.rs
 |       |   |   `-- searcher.rs
 |       |   |-- domain/
 |       |   |   |-- chain.rs
+|       |   |   |-- coverage.rs       # シード網羅率ビットマップ
 |       |   |   |-- hash.rs
 |       |   |   `-- sfmt/
 |       |   |       |-- mod.rs        # SFMT定数・実装選択
@@ -59,6 +65,7 @@ gen7-initseed-supporter/
 |       |   |       |-- simd.rs       # SIMD実装（単体）
 |       |   |       `-- multi.rs      # 16並列SFMT（multi-sfmt feature）
 |       |   `-- infra/
+|       |       |-- missing_seeds_io.rs  # 欠落シードI/O
 |       |       |-- table_io.rs
 |       |       `-- table_sort.rs
 |       `-- tests/
@@ -130,6 +137,9 @@ cargo bench --bench table_bench
 
 # 精度評価（完全版テーブル必要）
 cargo run --example detection_rate -p gen7seed-rainbow --release
+
+# 欠落シード抽出（完全版テーブル必要）
+cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 ```
 
 ---
