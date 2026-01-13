@@ -21,8 +21,18 @@ pub mod infra;
 // Re-export commonly used types
 pub use constants::*;
 pub use domain::chain::ChainEntry;
+pub use domain::coverage::SeedBitmap;
 pub use domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash};
 pub use domain::sfmt::Sfmt;
+
+// Re-export coverage analysis types
+pub use app::coverage::{
+    MissingSeedsResult, build_seed_bitmap, build_seed_bitmap_with_progress, extract_missing_seeds,
+    extract_missing_seeds_with_progress,
+};
+
+// Re-export missing seeds I/O
+pub use infra::missing_seeds_io::{get_missing_seeds_path, load_missing_seeds, save_missing_seeds};
 
 // Re-export mmap functionality when feature is enabled
 #[cfg(feature = "mmap")]
