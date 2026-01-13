@@ -40,7 +40,7 @@
 
 | 関数 | シグネチャ | 用途 |
 |------|-----------|------|
-| `generate_table_range` | `fn generate_table_range(consumption: i32, start: u32, end: u32) -> Vec<ChainEntry>` | ミニテーブル生成 |
+| `generate_table_range_parallel_multi` | `fn generate_table_range_parallel_multi(consumption: i32, start: u32, end: u32) -> Vec<ChainEntry>` | ミニテーブル生成（multi-sfmt + rayon並列） |
 
 #### searcher.rs（検索）
 
@@ -68,8 +68,8 @@
 | 構造体/メソッド | シグネチャ | 用途 |
 |----------------|-----------|------|
 | `Sfmt::new` | `fn new(seed: u32) -> Self` | SFMT初期化 |
-| `Sfmt::discard` | `fn discard(&mut self, n: usize)` | 乱数消費 |
-| `Sfmt::gen_next_8` | `fn gen_next_8(&mut self) -> [u64; 8]` | needle値生成 |
+| `Sfmt::skip` | `fn skip(&mut self, n: usize)` | 乱数消費（スキップ） |
+| `Sfmt::gen_rand_u64` | `fn gen_rand_u64(&mut self) -> u64` | 64bit乱数生成 |
 
 #### domain/hash.rs（ハッシュ計算）
 
@@ -87,11 +87,15 @@
 | パラメータ | 値 | 備考 |
 |------------|-----|------|
 | チェイン長 | 3000 | `MAX_CHAIN_LENGTH` と同一 |
-| チェイン本数 | 1,000〜10,000 | CI時間とカバレッジのバランス |
+| チェイン本数 | 1,000 | E2E重視のため削減 |
 | consumption | 417 | 代表的な値 |
 | 出力先 | `TempDir`（実ファイル生成） | テスト終了時に自動削除 |
+| 生成関数 | `generate_table_range_parallel_multi` | multi-sfmt + rayon並列 |
 
-**注意**: 軽量テストでも実際にファイルをディスクに書き出し、読み込み・検索の一連のパイプラインを検証する。
+**設計ポイント**:
+- 軽量テストでも実際にファイルをディスクに書き出し、読み込み・検索の一連のパイプラインを検証する
+- `OnceLock` を使用して**共有テーブルを1回だけ生成**し、各テストはそのファイルを読み込む
+- テストの並列実行時にリソース競合を回避
 
 ### 3.2 完全版ファイル条件（重量テスト用）
 
@@ -107,9 +111,46 @@
 - 10,000,000エントリ × 8バイト = 約80MB
 - 25,000,000エントリ × 8バイト = 約200MB
 
-### 3.3 テスト有効化条件
+### 3.3 共有テーブル方式（軽量テスト）
 
-重量テストは**環境変数を使用せず、ファイルの有無のみで有効化**する：
+軽量テストは`OnceLock`を使用して**共有テーブルを1回だけ生成**し、各テストはそのファイルを読み込む：
+
+```rust
+use std::sync::OnceLock;
+
+/// 共有テストテーブル構造体
+struct SharedTestTable {
+    /// TempDirを保持し続けることでファイル削除を防ぐ
+    _temp_dir: TempDir,
+    /// 未ソートテーブルのパス
+    unsorted_path: PathBuf,
+    /// ソート済みテーブルのパス
+    sorted_path: PathBuf,
+}
+
+static SHARED_TABLE: OnceLock<SharedTestTable> = OnceLock::new();
+
+fn get_shared_table() -> &'static SharedTestTable {
+    SHARED_TABLE.get_or_init(|| {
+        // 1回だけ実ファイル生成
+        let temp_dir = TempDir::new().unwrap();
+        let mut entries = generate_table_range_parallel_multi(CONSUMPTION, 0, MINI_TABLE_SIZE);
+        save_table(&unsorted_path, &entries).unwrap();
+        sort_table_parallel(&mut entries, CONSUMPTION);
+        save_table(&sorted_path, &entries).unwrap();
+        SharedTestTable { _temp_dir: temp_dir, unsorted_path, sorted_path }
+    })
+}
+```
+
+**利点**:
+- テストの並列実行時でもテーブル生成は1回のみ
+- 各テストは`load_table()`でファイルを読み込む（E2E検証）
+- スレッドセーフな初期化
+
+### 3.4 テスト有効化条件（重量テスト）
+
+重量テストは**ファイルの有無のみで有効化**する（環境変数不要）：
 
 ```rust
 fn get_full_table_path() -> Option<PathBuf> {
@@ -134,27 +175,31 @@ fn get_full_table_path() -> Option<PathBuf> {
 
 ### 4.1 テスト手順
 
-軽量テストでは `TempDir` を使用して**実際にファイルをディスクに生成**し、パイプライン全体を検証する。
+軽量テストでは `OnceLock` で共有テーブルを1回だけ生成し、各テストは**ファイル読み込み**でE2E検証する。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     軽量テスト フロー                            │
+│              共有テーブル初期化（OnceLock）                     │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. TempDir を作成                                               │
-│  2. ミニテーブル生成（10,000エントリ）                           │
-│     └── generate_table_range(consumption, 0, 10_000)            │
+│  2. ミニテーブル生成（1,000エントリ、multi-sfmt並列）            │
+│     └── generate_table_range_parallel_multi(consumption, 0, 1_000)│
 │  3. 未ソートテーブルを実ファイルとして保存                       │
 │     └── save_table(temp_dir/unsorted.bin, &entries)             │
 │  4. ソート実行                                                   │
 │     └── sort_table_parallel(&mut entries, consumption)          │
 │  5. ソート済みテーブルを実ファイルとして保存                     │
 │     └── save_table(temp_dir/sorted.bin, &entries)               │
-│  6. ファイル再読み込み                                           │
-│     └── load_table(temp_dir/sorted.bin)                         │
-│  7. 検索テスト実行（known-answer test）                         │
+└─────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  各テスト（並列実行）                             │
+├─────────────────────────────────────────────────────────────────┤
+│  1. get_shared_table() で共有テーブル取得                       │
+│  2. load_table(shared.sorted_path) でファイル読み込み（E2E）      │
+│  3. 検索テスト実行（known-answer test）                         │
 │     └── search_seeds_parallel(needle, consumption, &table)      │
-│  8. 検証: 期待する初期Seedが見つかること                         │
-│  9. TempDir ドロップ（自動クリーンアップ）                       │
+│  4. 検証: ソート順、検索結果等                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -174,8 +219,18 @@ fn get_full_table_path() -> Option<PathBuf> {
 /// Generate needle values from a known seed
 fn generate_needle_from_seed(seed: u32, consumption: i32) -> [u64; 8] {
     let mut sfmt = Sfmt::new(seed);
-    sfmt.discard(consumption as usize);
-    sfmt.gen_next_8()
+    sfmt.skip(consumption as usize);
+    // Generate 8 u64 values for needle
+    [
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+        sfmt.gen_rand_u64(),
+    ]
 }
 ```
 

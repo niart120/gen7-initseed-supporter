@@ -20,6 +20,9 @@ Thumbs.db
 # Rainbow table files (large binary files)
 *.tbl
 *.sorted.tbl
+*.bin
+*.sorted.bin
+target/release/*.bin
 
 # Benchmark data
 benches/data/
