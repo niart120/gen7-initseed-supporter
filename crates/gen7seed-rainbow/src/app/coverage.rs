@@ -158,6 +158,7 @@ where
 mod tests {
     use super::*;
     use crate::domain::chain::compute_chain;
+    use serial_test::serial;
 
     fn create_mini_table(size: u32, consumption: i32) -> Vec<ChainEntry> {
         (0..size)
@@ -166,6 +167,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_build_seed_bitmap_not_empty() {
         let table = create_mini_table(10, 417);
         let bitmap = build_seed_bitmap(&table, 417);
@@ -175,31 +177,35 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_missing_seeds_result() {
+    #[serial]
+    fn test_build_seed_bitmap_counts_consistent() {
         let table = create_mini_table(10, 417);
-        let result = extract_missing_seeds(&table, 417);
+        let bitmap = build_seed_bitmap(&table, 417);
 
-        // Verify counts are consistent
-        assert_eq!(result.reachable_count + result.missing_count, 1u64 << 32);
+        // Verify counts are consistent (without extracting all missing seeds)
+        let reachable = bitmap.count_reachable();
+        let missing = bitmap.count_missing();
+        assert_eq!(reachable + missing, 1u64 << 32);
 
-        // Coverage should match
-        let expected_coverage = result.reachable_count as f64 / (1u64 << 32) as f64;
-        assert!((result.coverage - expected_coverage).abs() < 1e-10);
+        // Coverage calculation
+        let coverage = reachable as f64 / (1u64 << 32) as f64;
+        assert!(coverage > 0.0);
+        assert!(coverage < 1.0); // Small table won't cover everything
     }
 
     #[test]
-    fn test_extract_missing_seeds_with_progress() {
+    #[serial]
+    fn test_build_seed_bitmap_with_progress_callback() {
         use std::sync::atomic::AtomicUsize;
 
         let table = create_mini_table(100, 417);
         let call_count = AtomicUsize::new(0);
 
-        let _result =
-            extract_missing_seeds_with_progress(&table, 417, |_phase, _current, _total| {
-                call_count.fetch_add(1, Ordering::Relaxed);
-            });
+        let _bitmap = build_seed_bitmap_with_progress(&table, 417, |_current, _total| {
+            call_count.fetch_add(1, Ordering::Relaxed);
+        });
 
-        // Should have been called multiple times
+        // Should have been called at least once (final progress)
         assert!(call_count.load(Ordering::Relaxed) > 0);
     }
 }

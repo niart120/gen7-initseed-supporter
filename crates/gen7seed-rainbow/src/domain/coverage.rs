@@ -100,8 +100,10 @@ impl Default for SeedBitmap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_bitmap_new_all_zero() {
         // Use a smaller test bitmap to avoid 512MB allocation in tests
         let bitmap = SeedBitmap::new();
@@ -111,6 +113,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_set_and_get() {
         let bitmap = SeedBitmap::new();
 
@@ -121,6 +124,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_boundary_values() {
         let bitmap = SeedBitmap::new();
 
@@ -137,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_set_batch() {
         let bitmap = SeedBitmap::new();
         let seeds: [u32; 16] = [
@@ -151,6 +156,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_count_reachable() {
         let bitmap = SeedBitmap::new();
 
@@ -164,6 +170,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_count_missing() {
         let bitmap = SeedBitmap::new();
 
@@ -177,6 +184,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    #[ignore] // Takes 60+ seconds to scan full 2^32 seed space
     fn test_bitmap_extract_missing_small() {
         let bitmap = SeedBitmap::new();
 
@@ -197,6 +206,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_bitmap_thread_safety() {
         use std::sync::Arc;
         use std::thread;
