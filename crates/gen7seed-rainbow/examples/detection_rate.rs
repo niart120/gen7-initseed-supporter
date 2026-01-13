@@ -1,6 +1,7 @@
 //! 検出率評価スクリプト
 //!
 //! ソート済みレインボーテーブルの検出率と検索速度を計測する。
+//! サンプリングは 32bit 全空間から一様抽出する。
 //!
 //! ## 実行方法
 //!
@@ -15,9 +16,9 @@
 //! [Detection Rate Evaluation]
 //! Table: target/release/417.sorted.bin
 //! Entries: 12,600,000
-//! Sample count: 100
+//! Sample count: 200
 //!
-//! Detection rate: 100/100 (100.0%)
+//! Detection rate: 180/200 (90.0%)
 //! Total time: 234.56s
 //! Average time per query: 2345.6ms
 //! ```
@@ -31,7 +32,7 @@ use gen7seed_rainbow::infra::table_io::load_table;
 use rand::Rng;
 
 const CONSUMPTION: i32 = 417;
-const SAMPLE_COUNT: usize = 100;
+const SAMPLE_COUNT: usize = 200;
 
 fn main() {
     // Get table path
@@ -63,9 +64,8 @@ fn main() {
 
     // Generate random seeds
     let mut rng = rand::thread_rng();
-    let table_size = table.len() as u32;
     let sample_seeds: Vec<u32> = (0..SAMPLE_COUNT)
-        .map(|_| rng.gen_range(0..table_size))
+        .map(|_| rng.r#gen::<u32>())
         .collect();
 
     // Measure detection rate
