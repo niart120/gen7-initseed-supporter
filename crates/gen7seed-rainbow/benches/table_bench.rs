@@ -14,13 +14,13 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use gen7seed_rainbow::Sfmt;
 use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
 use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::infra::table_io::load_table;
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
-use gen7seed_rainbow::Sfmt;
 
 const CONSUMPTION: i32 = 417;
 const MINI_TABLE_SIZE: u32 = 1_000;
@@ -47,11 +47,7 @@ fn get_full_table_path() -> Option<PathBuf> {
         .and_then(|p| p.parent()) // project root
         .map(|p| p.join("target/release/417.sorted.bin"))?;
 
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
+    if path.exists() { Some(path) } else { None }
 }
 
 /// Cached full table for benchmarks

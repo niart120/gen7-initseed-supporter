@@ -24,13 +24,13 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use gen7seed_rainbow::Sfmt;
 use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
 use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::domain::hash::gen_hash_from_seed;
 use gen7seed_rainbow::infra::table_io::{load_table, save_table};
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
-use gen7seed_rainbow::Sfmt;
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -62,7 +62,10 @@ static SHARED_TABLE: OnceLock<SharedTestTable> = OnceLock::new();
 /// Get or create the shared test table (thread-safe, runs only once)
 fn get_shared_table() -> &'static SharedTestTable {
     SHARED_TABLE.get_or_init(|| {
-        eprintln!("[SharedTestTable] Generating mini table ({} entries)...", MINI_TABLE_SIZE);
+        eprintln!(
+            "[SharedTestTable] Generating mini table ({} entries)...",
+            MINI_TABLE_SIZE
+        );
         let start = Instant::now();
 
         // Create temp directory
@@ -152,12 +155,22 @@ fn test_mini_table_pipeline() {
     let shared = get_shared_table();
 
     // Verify files exist
-    assert!(shared.unsorted_path.exists(), "Unsorted table file should exist");
-    assert!(shared.sorted_path.exists(), "Sorted table file should exist");
+    assert!(
+        shared.unsorted_path.exists(),
+        "Unsorted table file should exist"
+    );
+    assert!(
+        shared.sorted_path.exists(),
+        "Sorted table file should exist"
+    );
 
     // Load sorted table from file (E2E: file read)
     let loaded = load_table(&shared.sorted_path).expect("Failed to load sorted table");
-    assert_eq!(loaded.len(), MINI_TABLE_SIZE as usize, "Loaded table size should match");
+    assert_eq!(
+        loaded.len(),
+        MINI_TABLE_SIZE as usize,
+        "Loaded table size should match"
+    );
 
     // Verify sort order
     assert!(
@@ -253,7 +266,11 @@ fn test_full_table_file_integrity() {
     let min_size = 10 * 1024 * 1024; // 10 MB
     let max_size = 200 * 1024 * 1024; // 200 MB
 
-    println!("File size: {} bytes ({:.2} MB)", file_size, file_size as f64 / (1024.0 * 1024.0));
+    println!(
+        "File size: {} bytes ({:.2} MB)",
+        file_size,
+        file_size as f64 / (1024.0 * 1024.0)
+    );
 
     assert!(
         file_size >= min_size && file_size <= max_size,

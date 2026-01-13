@@ -160,15 +160,17 @@ harness = false
 
 ### 5.1 概要
 
-検出率などの実験的計測はテスト外で実施する。以下の3案を検討：
+検出率などの実験的計測はテスト外で実施する。
 
-### 5.2 案1: examples ディレクトリ
+**採用方針**: 案1（examples ディレクトリ）を採用する。
+
+### 5.2 採用案: examples ディレクトリ
 
 **概要**: `crates/gen7seed-rainbow/examples/detection_rate.rs` として実装
 
 **実行方法**:
 ```powershell
-cargo run --example detection_rate --release
+cargo run --example detection_rate -p gen7seed-rainbow --release
 ```
 
 **利点**:
@@ -176,56 +178,21 @@ cargo run --example detection_rate --release
 - `cargo run --example` で簡単に実行
 - リリースビルドで高速実行可能
 
-**欠点**:
-- examples は通常サンプルコード用途のため、意図がやや不明瞭
-- パラメータ変更時に再コンパイルが必要
+**実装内容**:
+- 完全版テーブル（`target/release/417.sorted.bin`）を読み込み
+- ランダムに100個のSeedをサンプリング
+- 各Seedから needle を生成して検索
+- 検出率と検索速度を出力
 
-**実装例**:
-```rust
-// examples/detection_rate.rs
-use gen7seed_rainbow::*;
+### 5.3 不採用案
 
-fn main() {
-    let table = load_table("target/release/417.sorted.bin").unwrap();
-    
-    let mut rng = rand::thread_rng();
-    let sample_count = 100;
-    let mut detected = 0;
-    
-    for _ in 0..sample_count {
-        let seed: u32 = rng.gen_range(0..table.len() as u32);
-        let needle = generate_needle_from_seed(seed, 417);
-        let results = search_seeds_parallel(needle, 417, &table);
-        if results.contains(&seed) {
-            detected += 1;
-        }
-    }
-    
-    println!("Detection rate: {}/{} ({:.1}%)", 
-        detected, sample_count, 
-        detected as f64 / sample_count as f64 * 100.0);
-}
-```
+以下の案は検討の結果、不採用とした：
 
-### 5.3 案2: rust-script / cargo-script
+#### 案2: rust-script / cargo-script
 
 **概要**: スタンドアロンのRustスクリプトとして実装
 
-**実行方法**:
-```powershell
-# rust-script のインストール
-cargo install rust-script
-
-# 実行
-rust-script scripts/eval_detection.rs
-```
-
-**利点**:
-- スクリプト形式で柔軟な実験が可能
-- 依存関係をファイル内に記述可能
-- コンパイルキャッシュあり
-
-**欠点**:
+**不採用理由**:
 - `rust-script` のインストールが必要
 - ワークスペースのクレートへの依存が煩雑
 
@@ -245,48 +212,13 @@ fn main() {
 }
 ```
 
-### 5.4 案3: CLI サブコマンド
+#### 案3: CLI サブコマンド
 
-**概要**: `gen7seed-cli` に評価用サブコマンドを追加、または `gen7seed_eval` として新規バイナリ
+**概要**: `gen7seed-cli` に評価用サブコマンドを追加
 
-**実行方法**:
-```powershell
-cargo run --release -p gen7seed-cli --bin gen7seed_eval -- 417 --samples 100
-```
-
-**利点**:
-- コマンドライン引数でパラメータ指定可能
-- 既存のCLIインフラを活用
-- 本番ツールとして整備可能
-
-**欠点**:
+**不採用理由**:
 - 実装コストが高い
 - 評価専用コードが本番コードに混入する可能性
-
-**実装例**:
-```rust
-// crates/gen7seed-cli/src/gen7seed_eval.rs
-use clap::Parser;
-
-#[derive(Parser)]
-struct Args {
-    consumption: i32,
-    #[arg(long, default_value = "100")]
-    samples: usize,
-}
-
-fn main() {
-    let args = Args::parse();
-    // ... 精度評価ロジック
-}
-```
-
-### 5.5 推奨案
-
-**案1（examples）を推奨**：
-- 最もシンプルで追加依存なし
-- `cargo run --example` で即実行可能
-- リリース前の手動確認に適切
 
 ---
 
@@ -348,15 +280,15 @@ cargo bench --bench table_bench
 
 ### 7.2 ベンチマーク
 
-- [ ] `benches/table_bench.rs` 新規作成
-- [ ] `bench_search_mini_table` 実装（ミニテーブル検索）
-- [ ] `bench_search_full_table` 実装（完全版テーブル検索、存在時のみ）
-- [ ] `Cargo.toml` にベンチマーク設定追加
+- [x] `benches/table_bench.rs` 新規作成
+- [x] `bench_search_mini_table` 実装（ミニテーブル検索）
+- [x] `bench_search_full_table` 実装（完全版テーブル検索、存在時のみ）
+- [x] `Cargo.toml` にベンチマーク設定追加
 
-### 7.3 精度評価（後続対応）
+### 7.3 精度評価
 
-- [ ] 分離先の方針決定（examples / rust-script / CLI）
-- [ ] 実装
+- [x] 分離先の方針決定 → **案1（examples）を採用**
+- [x] `examples/detection_rate.rs` 実装
 
 ### 7.4 その他
 
