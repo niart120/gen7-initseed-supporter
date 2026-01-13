@@ -498,21 +498,48 @@ fn main() {
 
 ## 5. テスト仕様
 
-### 5.1 ユニットテスト
+### 5.1 ユニットテスト（domain/coverage.rs）
 
 | テスト | 検証内容 |
 |--------|----------|
-| `test_seed_bitmap_set_get` | ビットマップの set/is_set 動作 |
-| `test_seed_bitmap_boundary` | 境界値（0, u32::MAX）の動作 |
-| `test_enumerate_chain_seeds` | チェーン列挙の長さとSeed一致 |
-| `test_enumerate_chain_seeds_x16` | 16並列版の単体版との一致 |
+| `test_bitmap_new_all_zero` | 初期状態で全ビット0 |
+| `test_bitmap_set_and_get` | set/is_set の基本動作 |
+| `test_bitmap_boundary_values` | 境界値（0, 63, 64, u32::MAX）の動作 |
+| `test_bitmap_set_batch` | 16シードのバッチ設定 |
+| `test_bitmap_count_reachable` | 到達可能シード数のカウント |
+| `test_bitmap_count_missing` | 欠落シード数のカウント |
+| `test_bitmap_thread_safety` | マルチスレッドでのアトミック動作 |
+| `test_bitmap_extract_missing_small` | 欠落シード抽出（#[ignore]、60秒以上） |
 
-### 5.2 統合テスト
+### 5.2 ユニットテスト（domain/chain.rs）
 
 | テスト | 検証内容 |
 |--------|----------|
-| `test_extract_missing_seeds_mini_table` | ミニテーブルでの欠落Seed抽出動作 |
-| `test_missing_seeds_roundtrip` | 欠落Seedファイルの読み書き整合性 |
+| `test_enumerate_chain_seeds_length` | チェーン長が MAX_CHAIN_LENGTH + 1 |
+| `test_enumerate_chain_seeds_deterministic` | 決定論的動作 |
+| `test_enumerate_chain_seeds_starts_with_start_seed` | 始点Seedで開始 |
+| `test_enumerate_chain_seeds_ends_with_end_seed` | 終点Seedで終了 |
+| `test_enumerate_chain_seeds_x16_matches_single` | 16並列版と単体版の一致 |
+| `test_enumerate_chain_seeds_x16_callback_count` | コールバック呼び出し回数 |
+
+### 5.3 ユニットテスト（app/coverage.rs）
+
+| テスト | 検証内容 | 備考 |
+|--------|----------|------|
+| `test_build_seed_bitmap_not_empty` | ビットマップに到達可能シードが存在 | #[serial] |
+| `test_build_seed_bitmap_counts_consistent` | reachable + missing = 2^32 | #[serial] |
+| `test_build_seed_bitmap_with_progress_callback` | 進捗コールバック呼び出し | #[serial] |
+
+**注意**: SeedBitmap（512MB）を使用するテストは `#[serial]` 属性で直列化し、メモリ並列確保を防止。
+
+### 5.4 ユニットテスト（infra/missing_seeds_io.rs）
+
+| テスト | 検証内容 |
+|--------|----------|
+| `test_save_and_load_missing_seeds` | ラウンドトリップ整合性 |
+| `test_empty_missing_seeds` | 空ファイルの読み書き |
+| `test_binary_format` | リトルエンディアン形式確認 |
+| `test_get_missing_seeds_path` | ファイルパス生成 |
 
 ### 5.3 動作確認コマンド
 
@@ -527,45 +554,46 @@ cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 
 ### 6.1 ドメイン層
 
-- [ ] `domain/chain.rs` に `enumerate_chain_seeds` 追加
-- [ ] `domain/chain.rs` に `enumerate_chain_seeds_x16` 追加（multi-sfmt）
-- [ ] `domain/coverage.rs` 新規作成
-- [ ] `SeedBitmap` 構造体実装
-- [ ] `SeedBitmap::set`, `set_batch`, `is_set` 実装
-- [ ] `SeedBitmap::extract_missing_seeds` 実装
-- [ ] `SeedBitmap::count_reachable` 実装
-- [ ] `domain/mod.rs` に coverage モジュール追加
-- [ ] ユニットテスト追加
+- [x] `domain/chain.rs` に `enumerate_chain_seeds` 追加
+- [x] `domain/chain.rs` に `enumerate_chain_seeds_x16` 追加（multi-sfmt）
+- [x] `domain/coverage.rs` 新規作成
+- [x] `SeedBitmap` 構造体実装
+- [x] `SeedBitmap::set`, `set_batch`, `is_set` 実装
+- [x] `SeedBitmap::extract_missing_seeds` 実装
+- [x] `SeedBitmap::count_reachable`, `count_missing` 実装
+- [x] `domain/mod.rs` に coverage モジュール追加
+- [x] ユニットテスト追加（#[serial] 属性付き）
 
 ### 6.2 アプリ層
 
-- [ ] `app/coverage.rs` 新規作成
-- [ ] `MissingSeedsResult` 構造体定義
-- [ ] `build_seed_bitmap` 実装
-- [ ] `build_seed_bitmap_with_progress` 実装
-- [ ] `extract_missing_seeds` 実装
-- [ ] `extract_missing_seeds_with_progress` 実装
-- [ ] `app/mod.rs` に coverage モジュール追加
+- [x] `app/coverage.rs` 新規作成
+- [x] `MissingSeedsResult` 構造体定義
+- [x] `build_seed_bitmap` 実装
+- [x] `build_seed_bitmap_with_progress` 実装
+- [x] `extract_missing_seeds` 実装
+- [x] `extract_missing_seeds_with_progress` 実装
+- [x] `app/mod.rs` に coverage モジュール追加
+- [x] ユニットテスト追加（#[serial] 属性付き）
 
 ### 6.3 インフラ層
 
-- [ ] `infra/missing_seeds_io.rs` 新規作成
-- [ ] `save_missing_seeds` 実装
-- [ ] `load_missing_seeds` 実装
-- [ ] `get_missing_seeds_path` 実装
-- [ ] `infra/mod.rs` に missing_seeds_io モジュール追加
-- [ ] ラウンドトリップテスト追加
+- [x] `infra/missing_seeds_io.rs` 新規作成
+- [x] `save_missing_seeds` 実装
+- [x] `load_missing_seeds` 実装
+- [x] `get_missing_seeds_path` 実装
+- [x] `infra/mod.rs` に missing_seeds_io モジュール追加
+- [x] ラウンドトリップテスト追加
 
 ### 6.4 examples
 
-- [ ] `examples/extract_missing_seeds.rs` 新規作成
-- [ ] 進捗表示実装
-- [ ] 結果表示・ファイル出力実装
+- [x] `examples/extract_missing_seeds.rs` 新規作成
+- [x] 進捗表示実装
+- [x] 結果表示・ファイル出力実装
 
 ### 6.5 その他
 
-- [ ] `lib.rs` に公開API追加
-- [ ] `.gitignore` に `*.missing.bin` 追加
+- [x] `lib.rs` に公開API追加
+- [x] `serial_test` クレートを dev-dependencies に追加
 
 ---
 

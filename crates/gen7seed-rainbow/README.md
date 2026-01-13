@@ -32,6 +32,14 @@ cargo run --release -p gen7seed-cli --bin gen7seed_sort -- 417
 cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 ```
 
+### 4. 欠落Seed抽出（網羅率評価）
+
+```bash
+cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
+```
+
+テーブルで到達できないSeedを抽出し、バイナリファイルに出力します。
+
 ## モジュール構成
 
 ```
@@ -46,18 +54,22 @@ crates/gen7seed-rainbow/
 │   │   │   ├── simd.rs         # SIMD実装（単体）
 │   │   │   └── multi.rs        # 16並列SFMT
 │   │   ├── hash.rs             # ハッシュ関数
-│   │   └── chain.rs            # チェーン操作
+│   │   ├── chain.rs            # チェーン操作
+│   │   └── coverage.rs         # Seed網羅率ビットマップ
 │   ├── infra/                  # インフラ層
 │   │   ├── table_io.rs         # テーブルI/O
-│   │   └── table_sort.rs       # ソート処理
+│   │   ├── table_sort.rs       # ソート処理
+│   │   └── missing_seeds_io.rs # 欠落Seed I/O
 │   └── app/                    # アプリケーション層
 │       ├── generator.rs        # テーブル生成
-│       └── searcher.rs         # 検索
+│       ├── searcher.rs         # 検索
+│       └── coverage.rs         # 欠落Seed抽出
 ├── benches/
 │   ├── rainbow_bench.rs        # コア処理ベンチマーク
 │   └── table_bench.rs          # テーブル検索ベンチマーク
 ├── examples/
-│   └── detection_rate.rs       # 検出率評価スクリプト
+│   ├── detection_rate.rs       # 検出率評価スクリプト
+│   └── extract_missing_seeds.rs # 欠落Seed抽出スクリプト
 └── tests/
     ├── sfmt_reference.rs       # SFMT参照テスト
     └── table_validation.rs     # テーブル評価試験
