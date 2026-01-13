@@ -104,6 +104,55 @@ pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEnt
     std::array::from_fn(|i| ChainEntry::new(start_seeds[i], current_seeds[i]))
 }
 
+// =============================================================================
+// Chain seed enumeration
+// =============================================================================
+
+/// Enumerate all seeds in a chain (single version)
+///
+/// Starting from start_seed, repeat hash → reduce MAX_CHAIN_LENGTH times,
+/// collecting all seeds along the path.
+///
+/// Returns a vector containing start_seed and all subsequent seeds
+/// (MAX_CHAIN_LENGTH + 1 elements total).
+pub fn enumerate_chain_seeds(start_seed: u32, consumption: i32) -> Vec<u32> {
+    let mut seeds = Vec::with_capacity(MAX_CHAIN_LENGTH as usize + 1);
+    let mut current = start_seed;
+    seeds.push(current);
+
+    for n in 0..MAX_CHAIN_LENGTH {
+        let hash = gen_hash_from_seed(current, consumption);
+        current = reduce_hash(hash, n);
+        seeds.push(current);
+    }
+
+    seeds
+}
+
+/// Enumerate seeds from 16 chains simultaneously (multi-sfmt version)
+///
+/// Expands 16 chains in parallel, calling the callback with 16 seeds
+/// at each step (including the initial seeds).
+///
+/// # Arguments
+/// * `start_seeds` - 16 starting seeds
+/// * `consumption` - consumption value
+/// * `on_seeds` - callback invoked at each step with 16 seeds
+#[cfg(feature = "multi-sfmt")]
+pub fn enumerate_chain_seeds_x16<F>(start_seeds: [u32; 16], consumption: i32, mut on_seeds: F)
+where
+    F: FnMut([u32; 16]),
+{
+    let mut current_seeds = start_seeds;
+    on_seeds(current_seeds); // Report initial seeds
+
+    for n in 0..MAX_CHAIN_LENGTH {
+        let hashes = gen_hash_from_seed_x16(current_seeds, consumption);
+        current_seeds = reduce_hash_x16(hashes, n);
+        on_seeds(current_seeds);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +275,75 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_enumerate_chain_seeds_length() {
+        let seeds = enumerate_chain_seeds(12345, 417);
+        assert_eq!(seeds.len(), MAX_CHAIN_LENGTH as usize + 1);
+    }
+
+    #[test]
+    fn test_enumerate_chain_seeds_starts_with_start_seed() {
+        let start_seed = 12345u32;
+        let seeds = enumerate_chain_seeds(start_seed, 417);
+        assert_eq!(seeds[0], start_seed);
+    }
+
+    #[test]
+    fn test_enumerate_chain_seeds_ends_with_end_seed() {
+        let start_seed = 12345u32;
+        let consumption = 417;
+
+        let seeds = enumerate_chain_seeds(start_seed, consumption);
+        let entry = compute_chain(start_seed, consumption);
+
+        assert_eq!(*seeds.last().unwrap(), entry.end_seed);
+    }
+
+    #[test]
+    fn test_enumerate_chain_seeds_deterministic() {
+        let seeds1 = enumerate_chain_seeds(12345, 417);
+        let seeds2 = enumerate_chain_seeds(12345, 417);
+        assert_eq!(seeds1, seeds2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_enumerate_chain_seeds_x16_matches_single() {
+        let start_seeds: [u32; 16] = std::array::from_fn(|i| 100 + i as u32);
+        let consumption = 417;
+
+        // Collect seeds from x16 version
+        let mut x16_all_seeds: Vec<Vec<u32>> = vec![Vec::new(); 16];
+        enumerate_chain_seeds_x16(start_seeds, consumption, |seeds| {
+            for (i, &seed) in seeds.iter().enumerate() {
+                x16_all_seeds[i].push(seed);
+            }
+        });
+
+        // Compare with single version
+        for (i, &start_seed) in start_seeds.iter().enumerate() {
+            let single_seeds = enumerate_chain_seeds(start_seed, consumption);
+            assert_eq!(
+                x16_all_seeds[i], single_seeds,
+                "Mismatch at index {} for seed {}",
+                i, start_seed
+            );
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_enumerate_chain_seeds_x16_callback_count() {
+        let start_seeds: [u32; 16] = std::array::from_fn(|i| i as u32);
+        let mut callback_count = 0u32;
+
+        enumerate_chain_seeds_x16(start_seeds, 417, |_| {
+            callback_count += 1;
+        });
+
+        // Should be called MAX_CHAIN_LENGTH + 1 times (initial + each step)
+        assert_eq!(callback_count, MAX_CHAIN_LENGTH + 1);
     }
 }

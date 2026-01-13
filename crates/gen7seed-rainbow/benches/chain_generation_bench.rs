@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::domain::hash::{gen_hash_from_seed, reduce_hash};
 use rayon::prelude::*;
@@ -45,7 +45,11 @@ fn compute_chain_len(start_seed: u32, consumption: i32, chain_length: u32) -> Ch
 }
 
 #[cfg(feature = "multi-sfmt")]
-fn compute_chains_x16_len(start_seeds: [u32; MULTI_WIDTH], consumption: i32, chain_length: u32) -> [ChainEntry; MULTI_WIDTH] {
+fn compute_chains_x16_len(
+    start_seeds: [u32; MULTI_WIDTH],
+    consumption: i32,
+    chain_length: u32,
+) -> [ChainEntry; MULTI_WIDTH] {
     let mut current_seeds = start_seeds;
 
     for n in 0..chain_length {
