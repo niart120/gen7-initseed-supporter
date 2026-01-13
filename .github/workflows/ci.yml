@@ -46,4 +46,4 @@ jobs:
         run: cargo test --workspace --all-features --lib
 
       - name: Cargo test (integration tests)
-        run: cargo test --workspace --all-features --test '*' --release
+        run: cargo test --workspace --all-features --test '*' --release -- --nocapture

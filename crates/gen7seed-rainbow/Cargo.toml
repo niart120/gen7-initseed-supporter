@@ -30,3 +30,7 @@ rand = "0.8"
 [[bench]]
 name = "rainbow_bench"
 harness = false
+
+[[bench]]
+name = "table_bench"
+harness = false

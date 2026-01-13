@@ -6,7 +6,7 @@
 //! ## Test Categories
 //!
 //! - **Lightweight tests**: Run with `cargo test`, use shared TempDir for E2E validation
-//! - **Heavyweight tests**: Run with `cargo test -- --ignored`, require full table at
+//! - **Heavyweight tests**: Run with `cargo test -- --include-ignored`, require full table at
 //!   `target/release/417.sorted.bin`
 //!
 //! ## Design
@@ -14,6 +14,11 @@
 //! Lightweight tests share a single mini-table generated once via `OnceLock`.
 //! This avoids redundant table generation while still testing the full E2E pipeline
 //! (generate → save → load → search).
+//!
+//! ## Note
+//!
+//! Performance benchmarks are in `benches/table_bench.rs`.
+//! Detection rate evaluation should be done via `examples/` or scripts.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -138,37 +143,6 @@ fn verify_sort_order(table: &[ChainEntry], consumption: i32) -> bool {
     })
 }
 
-/// Measure detection rate (returns detected count and total count)
-fn measure_detection_rate(
-    table: &[ChainEntry],
-    consumption: i32,
-    sample_seeds: &[u32],
-) -> (usize, usize) {
-    let mut detected = 0;
-    for &seed in sample_seeds {
-        let needle = generate_needle_from_seed(seed, consumption);
-        let results = search_seeds_parallel(needle, consumption, table);
-        if results.contains(&seed) {
-            detected += 1;
-        }
-    }
-    (detected, sample_seeds.len())
-}
-
-/// Measure search performance (returns total duration and query count)
-fn measure_search_performance(
-    table: &[ChainEntry],
-    consumption: i32,
-    sample_seeds: &[u32],
-) -> (std::time::Duration, usize) {
-    let start = Instant::now();
-    for &seed in sample_seeds {
-        let needle = generate_needle_from_seed(seed, consumption);
-        let _ = search_seeds_parallel(needle, consumption, table);
-    }
-    (start.elapsed(), sample_seeds.len())
-}
-
 // =============================================================================
 // Lightweight Tests (E2E with shared table)
 // =============================================================================
@@ -259,52 +233,6 @@ fn test_search_known_seeds() {
             println!("Seed {} found in results: {:?}", seed, results);
         }
     }
-}
-
-#[test]
-fn test_detection_rate_reference() {
-    let shared = get_shared_table();
-
-    // Load from file (E2E)
-    let entries = load_table(&shared.sorted_path).expect("Failed to load sorted table");
-
-    // Sample seeds within the table range
-    let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..50).map(|_| rng.gen_range(0..MINI_TABLE_SIZE)).collect();
-
-    let (detected, total) = measure_detection_rate(&entries, CONSUMPTION, &sample_seeds);
-    let rate = detected as f64 / total as f64 * 100.0;
-
-    println!(
-        "[Mini Table] Detection rate: {}/{} ({:.1}%)",
-        detected, total, rate
-    );
-
-    // No assertion - this is for reference only
-}
-
-#[test]
-fn test_search_performance_reference() {
-    let shared = get_shared_table();
-
-    // Load from file (E2E)
-    let entries = load_table(&shared.sorted_path).expect("Failed to load sorted table");
-
-    // Sample seeds for performance test
-    let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..10).map(|_| rng.gen_range(0..MINI_TABLE_SIZE)).collect();
-
-    let (duration, count) = measure_search_performance(&entries, CONSUMPTION, &sample_seeds);
-    let per_query = duration.as_secs_f64() / count as f64 * 1000.0;
-
-    println!(
-        "[Mini Table] Search time: {:.3}s for {} queries ({:.2}ms/query)",
-        duration.as_secs_f64(),
-        count,
-        per_query
-    );
-
-    // No assertion - this is for reference only
 }
 
 // =============================================================================
@@ -406,56 +334,10 @@ fn test_full_table_search_random_seeds() {
         found_count,
         test_seeds.len()
     );
-}
 
-#[test]
-#[ignore]
-fn test_full_table_detection_rate() {
-    let Some(path) = get_full_table_path() else {
-        return;
-    };
-
-    let table = load_table(&path).expect("Failed to load table");
-    let table_size = table.len() as u32;
-
-    // Sample 100 random seeds
-    let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..100).map(|_| rng.gen_range(0..table_size)).collect();
-
-    let (detected, total) = measure_detection_rate(&table, CONSUMPTION, &sample_seeds);
-    let rate = detected as f64 / total as f64 * 100.0;
-
-    println!(
-        "[Full Table] Detection rate: {}/{} ({:.1}%)",
-        detected, total, rate
+    // At least some seeds should be found
+    assert!(
+        found_count > 0,
+        "At least one seed should be found in the table"
     );
-
-    // No assertion - this is for reference only
-}
-
-#[test]
-#[ignore]
-fn test_full_table_search_performance() {
-    let Some(path) = get_full_table_path() else {
-        return;
-    };
-
-    let table = load_table(&path).expect("Failed to load table");
-    let table_size = table.len() as u32;
-
-    // Sample 50 random seeds for performance test
-    let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..50).map(|_| rng.gen_range(0..table_size)).collect();
-
-    let (duration, count) = measure_search_performance(&table, CONSUMPTION, &sample_seeds);
-    let per_query = duration.as_secs_f64() / count as f64 * 1000.0;
-
-    println!(
-        "[Full Table] Search time: {:.3}s for {} queries ({:.2}ms/query)",
-        duration.as_secs_f64(),
-        count,
-        per_query
-    );
-
-    // No assertion - this is for reference only
 }
