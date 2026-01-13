@@ -94,8 +94,14 @@ gen7-initseed-supporter/
 # ビルド
 cargo build --release
 
-# テスト
-cargo test
+# テスト（ユニットテストのみ・高速）
+cargo test --lib
+
+# テスト（統合テスト・release buildで最適化）
+cargo test --test '*' --release
+
+# テスト（全テスト・CI相当）
+cargo test --lib; cargo test --test '*' --release
 
 # テーブル生成（consumption=417）
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
