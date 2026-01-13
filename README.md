@@ -20,22 +20,20 @@
 cargo build --release
 ```
 
-### 2. テーブル生成 (Creation)
-レインボーテーブルを生成します。初回のみ実行が必要です。
+### 2. テーブル生成+ソート (Creation & Sorting)
+レインボーテーブルを生成し、自動的にソートします。初回のみ実行が必要です。
 ※時間がかかる場合があります。
 
 ```powershell
 cargo run --release --bin gen7seed_create -- 417
 ```
 
-### 3. テーブルソート (Sorting)
-検索効率向上のため、生成したテーブルをソートします。生成後に一度だけ実行してください。
+オプション:
+- `--no-sort`: ソートをスキップし、未ソートテーブルのみ生成
+- `--keep-unsorted`: ソート後も未ソートテーブルを保持（デフォルト: 削除）
+- `--help`: ヘルプを表示
 
-```powershell
-cargo run --release --bin gen7seed_sort -- 417
-```
-
-### 4. 初期Seed検索 (Search)
+### 3. 初期Seed検索 (Search)
 入力された針のパターンに基づき、初期Seedを検索します。
 
 ```powershell

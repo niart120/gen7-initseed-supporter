@@ -35,7 +35,6 @@ gen7-initseed-supporter/
 |   |   |-- Cargo.toml
 |   |   `-- src/
 |   |       |-- gen7seed_create.rs
-|   |       |-- gen7seed_sort.rs
 |   |       `-- gen7seed_search.rs
 |   `-- gen7seed-rainbow/             # レインボーテーブル処理（Rust）
 |       |-- Cargo.toml
