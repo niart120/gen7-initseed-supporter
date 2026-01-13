@@ -18,7 +18,10 @@ crates/
     |-- Cargo.toml
     |-- README.md
     |-- benches/
-    |   `-- rainbow_bench.rs
+    |   |-- rainbow_bench.rs      # コア処理ベンチマーク
+    |   `-- table_bench.rs        # テーブル検索ベンチマーク
+    |-- examples/
+    |   `-- detection_rate.rs     # 検出率評価スクリプト
     |-- src/
     |   |-- constants.rs
     |   |-- lib.rs
@@ -37,6 +40,7 @@ crates/
     |       |-- table_io.rs
     |       `-- table_sort.rs
     `-- tests/
-        |-- sfmt_reference.rs
+        |-- sfmt_reference.rs     # SFMT参照テスト
+        |-- table_validation.rs   # テーブル評価試験
         `-- data/
 ```

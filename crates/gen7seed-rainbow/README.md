@@ -53,6 +53,14 @@ crates/gen7seed-rainbow/
 │   └── app/                    # アプリケーション層
 │       ├── generator.rs        # テーブル生成
 │       └── searcher.rs         # 検索
+├── benches/
+│   ├── rainbow_bench.rs        # コア処理ベンチマーク
+│   └── table_bench.rs          # テーブル検索ベンチマーク
+├── examples/
+│   └── detection_rate.rs       # 検出率評価スクリプト
+└── tests/
+    ├── sfmt_reference.rs       # SFMT参照テスト
+    └── table_validation.rs     # テーブル評価試験
 ```
 
 ## ライセンス

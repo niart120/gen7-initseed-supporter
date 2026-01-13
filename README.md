@@ -54,13 +54,30 @@ cargo clippy --all-targets --all-features
 
 ### テスト実行
 ```powershell
-cargo test
+# ユニットテストのみ（高速）
+cargo test --lib
+
+# 統合テストのみ（release buildで最適化）
+cargo test --test '*' --release
+
+# 全テスト（CI相当）
+cargo test --lib; cargo test --test '*' --release
 ```
 
 ### ベンチマーク
 Criterionを使用したベンチマークが実行可能です。
 ```powershell
-cargo bench
+# コア処理ベンチマーク
+cargo bench --bench rainbow_bench
+
+# テーブル検索ベンチマーク（完全版テーブルが必要）
+cargo bench --bench table_bench
+```
+
+### 精度評価
+検出率・検索速度の計測スクリプトを実行できます。
+```powershell
+cargo run --example detection_rate -p gen7seed-rainbow --release
 ```
 
 ### 設計・仕様
