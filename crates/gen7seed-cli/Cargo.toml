@@ -10,10 +10,6 @@ name = "gen7seed_create"
 path = "src/gen7seed_create.rs"
 
 [[bin]]
-name = "gen7seed_sort"
-path = "src/gen7seed_sort.rs"
-
-[[bin]]
 name = "gen7seed_search"
 path = "src/gen7seed_search.rs"
 

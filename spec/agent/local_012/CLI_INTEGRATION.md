@@ -26,6 +26,7 @@
 | `crates/gen7seed-cli/Cargo.toml` | 修正（バイナリ定義変更） |
 | `README.md` | 修正（Usage Guideのコマンド例更新） |
 | `crates/README.md` | 修正（ディレクトリ構成から `gen7seed_sort.rs` 削除） |
+| `.github/copilot-instructions.md` | 修正（ディレクトリ構成から `gen7seed_sort.rs` 削除） |
 
 ---
 
@@ -252,4 +253,5 @@ cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
 - [ ] `Cargo.toml` から `gen7seed_sort` バイナリ定義を削除
 - [ ] `README.md` のUsage Guideを更新（2コマンド→1コマンド）
 - [ ] `crates/README.md` のディレクトリ構成を更新
+- [ ] `.github/copilot-instructions.md` のディレクトリ構成を更新
 - [ ] 各オプションの動作確認テスト
