@@ -9,7 +9,7 @@ use gen7seed_rainbow::{
     app::generator::{generate_table_range, generate_table_range_parallel},
     app::searcher::search_seeds_parallel,
     domain::chain::compute_chain,
-    infra::table_sort::sort_table,
+    infra::table_sort::sort_table_parallel,
 };
 
 #[cfg(feature = "multi-sfmt")]
@@ -41,7 +41,7 @@ fn bench_search_parallel(c: &mut Criterion) {
     let mut group = c.benchmark_group("search");
 
     let mut table = generate_table_range(CONSUMPTION, 0, 1000);
-    sort_table(&mut table, CONSUMPTION);
+    sort_table_parallel(&mut table, CONSUMPTION);
     let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
 
     group.bench_function("parallel", |b| {
