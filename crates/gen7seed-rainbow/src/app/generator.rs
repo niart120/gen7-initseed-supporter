@@ -11,38 +11,21 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(feature = "multi-sfmt")]
 use crate::domain::chain::compute_chains_x16;
 
+const PROGRESS_INTERVAL: u32 = 10_000;
+
 /// Generate a rainbow table
 ///
 /// Generate chains from seeds 0 to NUM_CHAINS - 1.
 pub fn generate_table(consumption: i32) -> Vec<ChainEntry> {
-    let mut entries = Vec::with_capacity(NUM_CHAINS as usize);
-
-    for start_seed in 0..NUM_CHAINS {
-        let entry = compute_chain(start_seed, consumption);
-        entries.push(entry);
-    }
-
-    entries
+    generate_table_range(consumption, 0, NUM_CHAINS)
 }
 
 /// Generate table with progress callback
-pub fn generate_table_with_progress<F>(consumption: i32, mut on_progress: F) -> Vec<ChainEntry>
+pub fn generate_table_with_progress<F>(consumption: i32, on_progress: F) -> Vec<ChainEntry>
 where
     F: FnMut(u32, u32), // (current, total)
 {
-    let mut entries = Vec::with_capacity(NUM_CHAINS as usize);
-
-    for start_seed in 0..NUM_CHAINS {
-        let entry = compute_chain(start_seed, consumption);
-        entries.push(entry);
-
-        if start_seed % 10000 == 0 {
-            on_progress(start_seed, NUM_CHAINS);
-        }
-    }
-
-    on_progress(NUM_CHAINS, NUM_CHAINS);
-    entries
+    generate_table_range_with_progress(consumption, 0, NUM_CHAINS, on_progress)
 }
 
 /// Generate a subset of the table (for testing or partial generation)
@@ -54,6 +37,42 @@ pub fn generate_table_range(consumption: i32, start: u32, end: u32) -> Vec<Chain
         entries.push(entry);
     }
 
+    entries
+}
+
+/// Generate a subset of the table with progress callback (sequential)
+///
+/// Reports progress at count 0, every PROGRESS_INTERVAL, and at completion.
+pub fn generate_table_range_with_progress<F>(
+    consumption: i32,
+    start: u32,
+    end: u32,
+    mut on_progress: F,
+) -> Vec<ChainEntry>
+where
+    F: FnMut(u32, u32),
+{
+    if start >= end {
+        on_progress(0, 0);
+        return Vec::new();
+    }
+
+    let total = end - start;
+    let mut entries = Vec::with_capacity(total as usize);
+
+    on_progress(0, total);
+
+    for (offset, start_seed) in (start..end).enumerate() {
+        let completed_before = offset as u32;
+        if completed_before != 0 && completed_before.is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(completed_before, total);
+        }
+
+        let entry = compute_chain(start_seed, consumption);
+        entries.push(entry);
+    }
+
+    on_progress(total, total);
     entries
 }
 
@@ -116,9 +135,9 @@ where
             let entry = compute_chain(start_seed, consumption);
 
             // Update progress approximately every 10,000 chains
-            let count = progress.fetch_add(1, Ordering::Relaxed);
-            if count.is_multiple_of(10000) {
-                on_progress(count, total);
+            let count_before = progress.fetch_add(1, Ordering::Relaxed);
+            if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+                on_progress(count_before, total);
             }
 
             entry
@@ -126,84 +145,6 @@ where
         .collect();
 
     on_progress(total, total);
-    entries
-}
-
-// =============================================================================
-// Multi-SFMT optimized table generation
-// =============================================================================
-
-/// Generate a rainbow table using 16-parallel SFMT
-///
-/// This function generates chains 16 at a time using SIMD operations,
-/// providing significant performance improvement over sequential generation.
-#[cfg(feature = "multi-sfmt")]
-pub fn generate_table_multi(consumption: i32) -> Vec<ChainEntry> {
-    let full_batches = NUM_CHAINS / 16;
-    let remainder = NUM_CHAINS % 16;
-
-    let mut entries = Vec::with_capacity(NUM_CHAINS as usize);
-
-    // Process full batches of 16
-    for batch in 0..full_batches {
-        let base = batch * 16;
-        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
-        let batch_entries = compute_chains_x16(seeds, consumption);
-        entries.extend(batch_entries);
-    }
-
-    // Process remainder (if any)
-    if remainder > 0 {
-        let base = full_batches * 16;
-        for offset in 0..remainder {
-            let entry = compute_chain(base + offset, consumption);
-            entries.push(entry);
-        }
-    }
-
-    entries
-}
-
-/// Generate a subset of the table using 16-parallel SFMT
-///
-/// This function generates chains in the range [start, end) using SIMD operations.
-#[cfg(feature = "multi-sfmt")]
-pub fn generate_table_range_multi(consumption: i32, start: u32, end: u32) -> Vec<ChainEntry> {
-    if start >= end {
-        return Vec::new();
-    }
-
-    let count = end - start;
-    let mut entries = Vec::with_capacity(count as usize);
-
-    // Handle misalignment at start (up to start aligned to 16)
-    let aligned_start = start.div_ceil(16) * 16;
-    for seed in start..aligned_start.min(end) {
-        let entry = compute_chain(seed, consumption);
-        entries.push(entry);
-    }
-
-    if aligned_start >= end {
-        return entries;
-    }
-
-    // Process aligned full batches of 16
-    let aligned_end = (end / 16) * 16;
-    let batch_count = (aligned_end - aligned_start) / 16;
-
-    for batch in 0..batch_count {
-        let base = aligned_start + batch * 16;
-        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
-        let batch_entries = compute_chains_x16(seeds, consumption);
-        entries.extend(batch_entries);
-    }
-
-    // Process remainder at end
-    for seed in aligned_end..end {
-        let entry = compute_chain(seed, consumption);
-        entries.push(entry);
-    }
-
     entries
 }
 
@@ -234,40 +175,38 @@ pub fn generate_table_range_parallel_multi(
         return Vec::new();
     }
 
-    // Handle misalignment at start (sequential, single chain)
-    let aligned_start = start.div_ceil(16) * 16;
-    let prefix: Vec<ChainEntry> = (start..aligned_start.min(end))
-        .map(|seed| compute_chain(seed, consumption))
-        .collect();
+    let mut result = Vec::with_capacity((end - start) as usize);
+
+    let aligned_start = if start.is_multiple_of(16) {
+        start
+    } else {
+        start + (16 - start % 16)
+    };
 
     if aligned_start >= end {
-        return prefix;
+        for seed in start..end {
+            result.push(compute_chain(seed, consumption));
+        }
+        return result;
     }
 
-    // Calculate aligned batches
-    let aligned_end = (end / 16) * 16;
-    let batch_count = (aligned_end - aligned_start) / 16;
+    let aligned_end = end - ((end - aligned_start) % 16);
 
-    // Process aligned batches in parallel using rayon
-    let middle: Vec<ChainEntry> = (0..batch_count)
-        .into_par_iter()
-        .flat_map_iter(|batch| {
-            let base = aligned_start + batch * 16;
-            let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
-            compute_chains_x16(seeds, consumption)
-        })
-        .collect();
+    for seed in start..aligned_start {
+        result.push(compute_chain(seed, consumption));
+    }
 
-    // Handle remainder at end (sequential, single chain)
-    let suffix: Vec<ChainEntry> = (aligned_end..end)
-        .map(|seed| compute_chain(seed, consumption))
-        .collect();
+    let batches = (aligned_end - aligned_start) / 16;
+    result.par_extend((0..batches).into_par_iter().flat_map_iter(|batch| {
+        let base = aligned_start + batch * 16;
+        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
+        compute_chains_x16(seeds, consumption)
+    }));
 
-    // Combine all parts
-    let mut result = Vec::with_capacity((end - start) as usize);
-    result.extend(prefix);
-    result.extend(middle);
-    result.extend(suffix);
+    for seed in aligned_end..end {
+        result.push(compute_chain(seed, consumption));
+    }
+
     result
 }
 
@@ -292,65 +231,63 @@ where
     let total = end - start;
     let progress = AtomicU32::new(0);
 
-    // Handle misalignment at start
-    let aligned_start = start.div_ceil(16) * 16;
-    let prefix: Vec<ChainEntry> = (start..aligned_start.min(end))
-        .map(|seed| {
-            let entry = compute_chain(seed, consumption);
-            let count = progress.fetch_add(1, Ordering::Relaxed);
-            if count.is_multiple_of(10000) {
-                on_progress(count, total);
-            }
-            entry
-        })
-        .collect();
+    let mut result = Vec::with_capacity((end - start) as usize);
+
+    let aligned_start = if start.is_multiple_of(16) {
+        start
+    } else {
+        start + (16 - start % 16)
+    };
 
     if aligned_start >= end {
+        for seed in start..end {
+            let entry = compute_chain(seed, consumption);
+            let count_before = progress.fetch_add(1, Ordering::Relaxed);
+            if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+                on_progress(count_before, total);
+            }
+            result.push(entry);
+        }
+
         on_progress(total, total);
-        return prefix;
+        return result;
     }
 
-    // Calculate aligned batches
-    let aligned_end = (end / 16) * 16;
-    let batch_count = (aligned_end - aligned_start) / 16;
+    let aligned_end = end - ((end - aligned_start) % 16);
 
-    // Process aligned batches in parallel
-    let middle: Vec<ChainEntry> = (0..batch_count)
-        .into_par_iter()
-        .flat_map_iter(|batch| {
-            let base = aligned_start + batch * 16;
-            let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
-            let entries = compute_chains_x16(seeds, consumption);
+    for seed in start..aligned_start {
+        let entry = compute_chain(seed, consumption);
+        let count_before = progress.fetch_add(1, Ordering::Relaxed);
+        if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(count_before, total);
+        }
+        result.push(entry);
+    }
 
-            // Update progress (16 chains at a time)
-            let count = progress.fetch_add(16, Ordering::Relaxed);
-            if count % 10000 < 16 {
-                on_progress(count, total);
-            }
+    let batches = (aligned_end - aligned_start) / 16;
+    result.par_extend((0..batches).into_par_iter().flat_map_iter(|batch| {
+        let base = aligned_start + batch * 16;
+        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
+        let entries = compute_chains_x16(seeds, consumption);
 
-            entries
-        })
-        .collect();
+        let count_before = progress.fetch_add(16, Ordering::Relaxed);
+        if count_before % PROGRESS_INTERVAL < 16 {
+            on_progress(count_before, total);
+        }
 
-    // Handle remainder at end
-    let suffix: Vec<ChainEntry> = (aligned_end..end)
-        .map(|seed| {
-            let entry = compute_chain(seed, consumption);
-            let count = progress.fetch_add(1, Ordering::Relaxed);
-            if count.is_multiple_of(10000) {
-                on_progress(count, total);
-            }
-            entry
-        })
-        .collect();
+        entries
+    }));
+
+    for seed in aligned_end..end {
+        let entry = compute_chain(seed, consumption);
+        let count_before = progress.fetch_add(1, Ordering::Relaxed);
+        if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(count_before, total);
+        }
+        result.push(entry);
+    }
 
     on_progress(total, total);
-
-    // Combine all parts
-    let mut result = Vec::with_capacity((end - start) as usize);
-    result.extend(prefix);
-    result.extend(middle);
-    result.extend(suffix);
     result
 }
 
@@ -442,65 +379,6 @@ mod tests {
                 i
             );
         }
-    }
-
-    // =========================================================================
-    // Multi-SFMT tests
-    // =========================================================================
-
-    #[cfg(feature = "multi-sfmt")]
-    #[test]
-    fn test_generate_table_range_multi_empty() {
-        let entries = generate_table_range_multi(417, 0, 0);
-        assert!(entries.is_empty());
-    }
-
-    #[cfg(feature = "multi-sfmt")]
-    #[test]
-    fn test_generate_table_range_multi_matches_single() {
-        // Test aligned range (multiple of 16)
-        let entries_single = generate_table_range(417, 0, 32);
-        let entries_multi = generate_table_range_multi(417, 0, 32);
-
-        assert_eq!(entries_single.len(), entries_multi.len());
-        for (i, (s, m)) in entries_single.iter().zip(entries_multi.iter()).enumerate() {
-            assert_eq!(s, m, "Mismatch at index {}", i);
-        }
-    }
-
-    #[cfg(feature = "multi-sfmt")]
-    #[test]
-    fn test_generate_table_range_multi_unaligned() {
-        // Test unaligned range
-        let entries_single = generate_table_range(417, 5, 37);
-        let entries_multi = generate_table_range_multi(417, 5, 37);
-
-        assert_eq!(entries_single.len(), entries_multi.len());
-        for (i, (s, m)) in entries_single.iter().zip(entries_multi.iter()).enumerate() {
-            assert_eq!(s, m, "Mismatch at index {} (seed {})", i, 5 + i);
-        }
-    }
-
-    #[cfg(feature = "multi-sfmt")]
-    #[test]
-    fn test_generate_table_range_multi_small() {
-        // Test range smaller than 16
-        let entries_single = generate_table_range(417, 0, 5);
-        let entries_multi = generate_table_range_multi(417, 0, 5);
-
-        assert_eq!(entries_single.len(), entries_multi.len());
-        for (i, (s, m)) in entries_single.iter().zip(entries_multi.iter()).enumerate() {
-            assert_eq!(s, m, "Mismatch at index {}", i);
-        }
-    }
-
-    #[cfg(feature = "multi-sfmt")]
-    #[test]
-    fn test_generate_table_range_multi_deterministic() {
-        let entries1 = generate_table_range_multi(417, 0, 64);
-        let entries2 = generate_table_range_multi(417, 0, 64);
-
-        assert_eq!(entries1, entries2);
     }
 
     // =========================================================================

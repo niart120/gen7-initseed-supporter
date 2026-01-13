@@ -305,16 +305,33 @@ pub fn compute_chains_x16(
 ### 4.2 テーブル生成との統合
 
 ```rust
-/// 並列テーブル生成（rayon + MultipleSFMT）
-pub fn generate_table_multi(consumption: i32) -> Vec<ChainEntry> {
-    (0..NUM_CHAINS)
-        .into_par_iter()
-        .step_by(16)
-        .flat_map(|base| {
-            let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
-            compute_chains_x16(seeds, consumption)
-        })
-        .collect()
+/// 並列テーブル生成（rayon + MultipleSFMT、16本バッチ）
+pub fn generate_table_range_parallel_multi(
+    consumption: i32,
+    start: u32,
+    end: u32,
+) -> Vec<ChainEntry> {
+    let aligned_start = if start % 16 == 0 { start } else { start + (16 - start % 16) };
+    let aligned_end = end - ((end - aligned_start) % 16);
+
+    let mut result = Vec::with_capacity((end - start) as usize);
+
+    for seed in start..aligned_start {
+        result.push(compute_chain(seed, consumption));
+    }
+
+    let batches = (aligned_end - aligned_start) / 16;
+    result.par_extend((0..batches).into_par_iter().flat_map_iter(|batch| {
+        let base = aligned_start + batch * 16;
+        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
+        compute_chains_x16(seeds, consumption)
+    }));
+
+    for seed in aligned_end..end {
+        result.push(compute_chain(seed, consumption));
+    }
+
+    result
 }
 ```
 
