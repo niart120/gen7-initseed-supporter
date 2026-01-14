@@ -114,13 +114,13 @@ cargo test --test '*' --release
 # テスト（全テスト・CI相当）
 cargo test --lib; cargo test --test '*' --release
 
-# テーブル生成（consumption=417）
+# テーブル生成（全8枚、consumption=417）
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
 
-# テーブルソート
-cargo run --release -p gen7seed-cli --bin gen7seed_sort -- 417
+# テーブル生成（単一テーブル、table_id=0）
+cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --table-id 0
 
-# 初期Seed検索
+# 初期Seed検索（8枚のテーブルを順次検索）
 cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 
 # コード整形

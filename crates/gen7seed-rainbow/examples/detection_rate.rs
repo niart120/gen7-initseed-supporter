@@ -1,12 +1,12 @@
 //! 検出率評価スクリプト
 //!
-//! ソート済みレインボーテーブルの検出率と検索速度を計測する。
+//! 複数レインボーテーブルの検出率と検索速度を計測する。
 //! サンプリングは 32bit 全空間から一様抽出する。
 //!
 //! ## 実行方法
 //!
 //! ```powershell
-//! # 完全版テーブルが必要（target/release/417.sorted.bin）
+//! # 8枚のテーブルが必要（417_0.sorted.bin - 417_7.sorted.bin）
 //! cargo run --example detection_rate -p gen7seed-rainbow --release
 //! ```
 //!
@@ -14,59 +14,68 @@
 //!
 //! ```text
 //! [Detection Rate Evaluation]
-//! Table: target/release/417.sorted.bin
-//! Entries: 12,600,000
+//! Tables: 8 loaded
+//! Entries per table: 2,097,152
 //! Sample count: 200
 //!
-//! Detection rate: 180/200 (90.0%)
-//! Total time: 234.56s
-//! Average time per query: 2345.6ms
+//! Detection rate: 198/200 (99.0%)
+//! Total time: 45.67s
+//! Average time per query: 456.7ms
 //! ```
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
-use gen7seed_rainbow::app::searcher::search_seeds_parallel;
+use gen7seed_rainbow::app::searcher::search_seeds_parallel_with_table_id;
 use gen7seed_rainbow::infra::table_io::load_table;
 use rand::Rng;
 
 const CONSUMPTION: i32 = 417;
 const SAMPLE_COUNT: usize = 200;
+const TABLE_COUNT: u8 = 8;
 
 fn main() {
-    // Get table path
-    let table_path = get_table_path();
+    // Get table directory
+    let table_dir = get_table_dir();
 
     println!("[Detection Rate Evaluation]");
-    println!("Table: {}", table_path.display());
+    println!("Directory: {}", table_dir.display());
 
-    // Load table
-    println!("Loading table...");
+    // Load all tables
+    println!("Loading {} tables...", TABLE_COUNT);
     let start = Instant::now();
-    let table = match load_table(&table_path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: Failed to load table: {}", e);
-            eprintln!(
-                "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
-            );
-            std::process::exit(1);
+    let mut tables = Vec::new();
+    for table_id in 0..TABLE_COUNT {
+        let path = table_dir.join(format!("{}_{}.sorted.bin", CONSUMPTION, table_id));
+        match load_table(&path) {
+            Ok(t) => tables.push(t),
+            Err(e) => {
+                eprintln!("Warning: Failed to load table {}: {}", table_id, e);
+            }
         }
-    };
+    }
     println!(
-        "Loaded {} entries in {:.2}s",
-        table.len(),
+        "Loaded {} tables in {:.2}s",
+        tables.len(),
         start.elapsed().as_secs_f64()
     );
+    if tables.is_empty() {
+        eprintln!("Error: No tables could be loaded.");
+        eprintln!(
+            "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
+        );
+        std::process::exit(1);
+    }
+    if let Some(first) = tables.first() {
+        println!("Entries per table: {}", first.len());
+    }
     println!("Sample count: {}", SAMPLE_COUNT);
     println!();
 
     // Generate random seeds
     let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..SAMPLE_COUNT)
-        .map(|_| rng.r#gen::<u32>())
-        .collect();
+    let sample_seeds: Vec<u32> = (0..SAMPLE_COUNT).map(|_| rng.r#gen::<u32>()).collect();
 
     // Measure detection rate
     let mut detected = 0;
@@ -74,9 +83,19 @@ fn main() {
 
     for (i, &seed) in sample_seeds.iter().enumerate() {
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
-        let results = search_seeds_parallel(needle, CONSUMPTION, &table);
 
-        if results.contains(&seed) {
+        // Search across all tables
+        let mut found = false;
+        for (table_id, table) in tables.iter().enumerate() {
+            let results =
+                search_seeds_parallel_with_table_id(needle, CONSUMPTION, table, table_id as u32);
+            if results.contains(&seed) {
+                found = true;
+                break;
+            }
+        }
+
+        if found {
             detected += 1;
         }
 
@@ -100,19 +119,21 @@ fn main() {
     println!("Average time per query: {:.1}ms", avg_time_ms);
 }
 
-/// Get the path to the sorted table
-fn get_table_path() -> PathBuf {
-    // Default path: target/release/417.sorted.bin
+/// Get the directory containing sorted tables
+fn get_table_dir() -> PathBuf {
+    // Default path: project root (where tables are stored)
     let default_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent() // crates/
         .and_then(|p| p.parent()) // project root
-        .map(|p| p.join("target/release/417.sorted.bin"))
+        .map(PathBuf::from)
         .expect("Failed to determine project root");
 
-    if default_path.exists() {
+    // Check if at least one table exists
+    let test_file = default_path.join(format!("{}_0.sorted.bin", CONSUMPTION));
+    if test_file.exists() {
         default_path
     } else {
-        eprintln!("Error: Table file not found at {:?}", default_path);
+        eprintln!("Error: Table files not found at {:?}", default_path);
         eprintln!(
             "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
         );

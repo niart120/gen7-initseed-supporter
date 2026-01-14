@@ -4,8 +4,8 @@
 //! using the rainbow table algorithm.
 
 use crate::constants::MAX_CHAIN_LENGTH;
-use crate::domain::chain::{ChainEntry, verify_chain};
-use crate::domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash};
+use crate::domain::chain::{ChainEntry, verify_chain_with_salt};
+use crate::domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash_with_salt};
 use rayon::prelude::*;
 use std::collections::HashSet;
 
@@ -25,16 +25,31 @@ pub fn search_seeds_parallel(
     search_all_columns_parallel(consumption, target_hash, table)
 }
 
+/// Search for initial seeds from needle values with table_id (salt support)
+pub fn search_seeds_with_table_id(
+    needle_values: [u64; 8],
+    consumption: i32,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Vec<u32> {
+    let target_hash = gen_hash(needle_values);
+    search_all_columns_with_table_id(consumption, target_hash, table, table_id)
+}
+
+/// Search for initial seeds from needle values with table_id (parallel version)
+pub fn search_seeds_parallel_with_table_id(
+    needle_values: [u64; 8],
+    consumption: i32,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Vec<u32> {
+    let target_hash = gen_hash(needle_values);
+    search_all_columns_parallel_with_table_id(consumption, target_hash, table, table_id)
+}
+
 /// Execute search across all column positions
 fn search_all_columns(consumption: i32, target_hash: u64, table: &[ChainEntry]) -> Vec<u32> {
-    let mut results = HashSet::new();
-
-    for column in 0..MAX_CHAIN_LENGTH {
-        let found = search_column(consumption, target_hash, column, table);
-        results.extend(found);
-    }
-
-    results.into_iter().collect()
+    search_all_columns_with_table_id(consumption, target_hash, table, 0)
 }
 
 /// Execute search across all column positions (parallel version)
@@ -43,27 +58,57 @@ fn search_all_columns_parallel(
     target_hash: u64,
     table: &[ChainEntry],
 ) -> Vec<u32> {
+    search_all_columns_parallel_with_table_id(consumption, target_hash, table, 0)
+}
+
+/// Execute search across all column positions with table_id
+fn search_all_columns_with_table_id(
+    consumption: i32,
+    target_hash: u64,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Vec<u32> {
+    let mut results = HashSet::new();
+
+    for column in 0..MAX_CHAIN_LENGTH {
+        let found = search_column_with_table_id(consumption, target_hash, column, table, table_id);
+        results.extend(found);
+    }
+
+    results.into_iter().collect()
+}
+
+/// Execute search across all column positions with table_id (parallel version)
+fn search_all_columns_parallel_with_table_id(
+    consumption: i32,
+    target_hash: u64,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Vec<u32> {
     let results: HashSet<u32> = (0..MAX_CHAIN_LENGTH)
         .into_par_iter()
-        .flat_map(|column| search_column(consumption, target_hash, column, table))
+        .flat_map(|column| {
+            search_column_with_table_id(consumption, target_hash, column, table, table_id)
+        })
         .collect();
 
     results.into_iter().collect()
 }
 
-/// Search at a single column position
-fn search_column(
+/// Search at a single column position with table_id
+fn search_column_with_table_id(
     consumption: i32,
     target_hash: u64,
     column: u32,
     table: &[ChainEntry],
+    table_id: u32,
 ) -> Vec<u32> {
     let mut results = Vec::new();
 
     // Step 1: Calculate hash from target_hash to chain end
     let mut h = target_hash;
     for n in column..MAX_CHAIN_LENGTH {
-        let seed = reduce_hash(h, n);
+        let seed = reduce_hash_with_salt(h, n, table_id);
         h = gen_hash_from_seed(seed, consumption);
     }
 
@@ -73,7 +118,9 @@ fn search_column(
 
     // Step 3: Verify candidate chains
     for entry in candidates {
-        if let Some(found_seed) = verify_chain(entry.start_seed, column, target_hash, consumption) {
+        if let Some(found_seed) =
+            verify_chain_with_salt(entry.start_seed, column, target_hash, consumption, table_id)
+        {
             results.push(found_seed);
         }
     }
@@ -134,7 +181,7 @@ mod tests {
     #[test]
     fn test_search_column_empty_table() {
         let table: Vec<ChainEntry> = vec![];
-        let results = search_column(417, 12345, 0, &table);
+        let results = search_column_with_table_id(417, 12345, 0, &table, 0);
         assert!(results.is_empty());
     }
 

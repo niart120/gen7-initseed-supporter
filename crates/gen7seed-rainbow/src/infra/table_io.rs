@@ -47,13 +47,31 @@ pub fn save_table(path: impl AsRef<Path>, entries: &[ChainEntry]) -> io::Result<
 }
 
 /// Get the expected file path for a consumption value (unsorted)
+///
+/// Note: This is equivalent to `get_table_path_with_table_id(consumption, 0)`.
 pub fn get_table_path(consumption: i32) -> String {
-    format!("{}.bin", consumption)
+    get_table_path_with_table_id(consumption, 0)
 }
 
 /// Get the expected file path for a sorted consumption table
+///
+/// Note: This is equivalent to `get_sorted_table_path_with_table_id(consumption, 0)`.
 pub fn get_sorted_table_path(consumption: i32) -> String {
-    format!("{}.sorted.bin", consumption)
+    get_sorted_table_path_with_table_id(consumption, 0)
+}
+
+/// Get the expected file path for a consumption value with table_id (unsorted)
+///
+/// Format: `{consumption}_{table_id}.bin`
+pub fn get_table_path_with_table_id(consumption: i32, table_id: u32) -> String {
+    format!("{}_{}.bin", consumption, table_id)
+}
+
+/// Get the expected file path for a sorted consumption table with table_id
+///
+/// Format: `{consumption}_{table_id}.sorted.bin`
+pub fn get_sorted_table_path_with_table_id(consumption: i32, table_id: u32) -> String {
+    format!("{}_{}.sorted.bin", consumption, table_id)
 }
 
 // =============================================================================
@@ -216,14 +234,39 @@ mod tests {
 
     #[test]
     fn test_get_table_path() {
-        assert_eq!(get_table_path(417), "417.bin");
-        assert_eq!(get_table_path(477), "477.bin");
+        // Legacy API defaults to table_id=0
+        assert_eq!(get_table_path(417), "417_0.bin");
+        assert_eq!(get_table_path(477), "477_0.bin");
     }
 
     #[test]
     fn test_get_sorted_table_path() {
-        assert_eq!(get_sorted_table_path(417), "417.sorted.bin");
-        assert_eq!(get_sorted_table_path(477), "477.sorted.bin");
+        // Legacy API defaults to table_id=0
+        assert_eq!(get_sorted_table_path(417), "417_0.sorted.bin");
+        assert_eq!(get_sorted_table_path(477), "477_0.sorted.bin");
+    }
+
+    #[test]
+    fn test_get_table_path_with_table_id() {
+        assert_eq!(get_table_path_with_table_id(417, 0), "417_0.bin");
+        assert_eq!(get_table_path_with_table_id(417, 3), "417_3.bin");
+        assert_eq!(get_table_path_with_table_id(477, 7), "477_7.bin");
+    }
+
+    #[test]
+    fn test_get_sorted_table_path_with_table_id() {
+        assert_eq!(
+            get_sorted_table_path_with_table_id(417, 0),
+            "417_0.sorted.bin"
+        );
+        assert_eq!(
+            get_sorted_table_path_with_table_id(417, 5),
+            "417_5.sorted.bin"
+        );
+        assert_eq!(
+            get_sorted_table_path_with_table_id(477, 7),
+            "477_7.sorted.bin"
+        );
     }
 
     #[cfg(feature = "mmap")]
