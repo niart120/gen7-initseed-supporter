@@ -415,3 +415,118 @@ pub fn search_seeds(
 | APIブレイキングチェンジ | 外部利用者への影響 | 内部ツールのため許容（外部公開していない） |
 | 性能劣化 | ベンチマーク悪化 | インライン展開・最適化の確認 |
 | バグ混入 | 既存機能の破壊 | 既存テストを維持しつつ移行 |
+
+---
+
+## 9. 実装結果
+
+### 9.1 コード削減量
+
+| 項目 | 改修前 | 改修後 | 削減 |
+|------|--------|--------|------|
+| **総行数** | +1,101行 | +521行 | **-580行** |
+| generator.rs 関数数 | 17 | 1 | -16 |
+| searcher.rs 関数数 | 4 | 1 | -3 |
+| coverage.rs 関数数 | 8 | 4 | -4 |
+| chain.rs 関数数 | 10+ | 5 | -5+ |
+
+### 9.2 新API
+
+#### generator.rs
+```rust
+pub fn generate_table<F>(consumption: i32, options: GenerateOptions<F>) -> Vec<ChainEntry>
+
+impl<F> GenerateOptions<F> {
+    pub fn with_range(start: u32, end: u32) -> Self
+    pub fn with_table_id(table_id: u32) -> Self
+    pub fn with_progress<G>(callback: G) -> GenerateOptions<G>
+}
+```
+
+#### searcher.rs
+```rust
+pub fn search_seeds(needle_values: [u64; 8], consumption: i32, table: &[ChainEntry], table_id: u32) -> Vec<u32>
+```
+
+#### coverage.rs
+```rust
+pub fn build_seed_bitmap<F>(table: &[ChainEntry], consumption: i32, options: BitmapOptions<F>) -> Arc<SeedBitmap>
+pub fn extract_missing_seeds<F>(table: &[ChainEntry], consumption: i32, options: BitmapOptions<F>) -> MissingSeedsResult
+
+impl<F> BitmapOptions<F> {
+    pub fn with_table_id(table_id: u32) -> Self
+    pub fn with_progress<G>(callback: G) -> BitmapOptions<G>
+}
+```
+
+#### chain.rs
+```rust
+pub fn compute_chain(start_seed: u32, consumption: i32, table_id: u32) -> ChainEntry
+pub fn verify_chain(start_seed: u32, column: u32, target_hash: u64, consumption: i32, table_id: u32) -> Option<u32>
+pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32, table_id: u32) -> [ChainEntry; 16]
+pub fn enumerate_chain_seeds(start_seed: u32, consumption: i32, table_id: u32) -> Vec<u32>
+pub fn enumerate_chain_seeds_x16<F>(start_seeds: [u32; 16], consumption: i32, table_id: u32, on_seeds: F)
+```
+
+### 9.3 削除された関数
+
+#### generator.rs (16関数削除)
+- `generate_table` (引数なし版)
+- `generate_table_with_progress`
+- `generate_table_range`
+- `generate_table_range_with_progress`
+- `generate_table_parallel`
+- `generate_table_parallel_with_progress`
+- `generate_table_range_parallel`
+- `generate_table_range_parallel_with_progress`
+- `generate_table_parallel_multi`
+- `generate_table_range_parallel_multi`
+- `generate_table_range_parallel_multi_with_progress`
+- `generate_table_parallel_multi_with_progress`
+- `generate_table_parallel_multi_with_table_id`
+- `generate_table_range_parallel_multi_with_table_id`
+- `generate_table_parallel_multi_with_table_id_and_progress`
+- `generate_table_range_parallel_multi_with_table_id_and_progress`
+- `generate_table_parallel_with_table_id_and_progress`
+
+#### searcher.rs (3関数削除)
+- `search_seeds_parallel`
+- `search_seeds_with_table_id`
+- `search_seeds_parallel_with_table_id`
+
+#### chain.rs (5関数削除)
+- `compute_chain_with_salt`
+- `verify_chain_with_salt`
+- `compute_chains_x16_with_salt`
+- `enumerate_chain_seeds_x16_with_salt`
+- `enumerate_chain_seeds` (旧: table_id引数なし)
+
+#### coverage.rs (4関数削除)
+- `build_seed_bitmap_with_progress`
+- `build_seed_bitmap_with_salt`
+- `build_seed_bitmap_with_salt_and_progress`
+- `extract_missing_seeds_with_progress`
+
+### 9.4 テスト結果
+
+```
+running 123 tests
+test result: ok. 122 passed; 0 failed; 1 ignored
+
+running 1 test (sfmt_reference.rs)
+test result: ok. 1 passed
+
+running 7 tests (table_validation.rs)
+test result: ok. 4 passed; 0 failed; 3 ignored
+```
+
+- cargo clippy: 警告なし
+- cargo fmt: 適用済み
+
+### 9.5 コミット
+
+```
+commit c115a10
+refactor: Optionsパターンによる公開APIの統一
+12 files changed, 521 insertions(+), 1101 deletions(-)
+```
