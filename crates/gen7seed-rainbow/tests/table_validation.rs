@@ -25,12 +25,11 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
-use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
-use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::domain::hash::gen_hash_from_seed;
 use gen7seed_rainbow::infra::table_io::{load_table, save_table};
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
+use gen7seed_rainbow::{GenerateOptions, generate_table, search_seeds};
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -71,8 +70,11 @@ fn get_shared_table() -> &'static SharedTestTable {
         // Create temp directory
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
-        // Generate mini table using multi-sfmt parallel generation
-        let mut entries = generate_table_range_parallel_multi(CONSUMPTION, 0, MINI_TABLE_SIZE);
+        // Generate mini table using new unified API
+        let mut entries = generate_table(
+            CONSUMPTION,
+            GenerateOptions::default().with_range(0, MINI_TABLE_SIZE),
+        );
 
         // Save unsorted table
         let unsorted_path = temp_dir.path().join("unsorted.bin");
@@ -237,7 +239,7 @@ fn test_search_known_seeds() {
         }
 
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
-        let results = search_seeds_parallel(needle, CONSUMPTION, &entries);
+        let results = search_seeds(needle, CONSUMPTION, &entries, 0);
 
         // The seed should be found (unless there's a hash collision that excludes it)
         // Note: Due to rainbow table nature, not all seeds are guaranteed to be found
@@ -340,7 +342,7 @@ fn test_full_table_search_random_seeds() {
     let mut found_count = 0;
     for &seed in &test_seeds {
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
-        let results = search_seeds_parallel(needle, CONSUMPTION, &table);
+        let results = search_seeds(needle, CONSUMPTION, &table, 0);
         if results.contains(&seed) {
             found_count += 1;
         }

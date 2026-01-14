@@ -15,12 +15,10 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use gen7seed_rainbow::Sfmt;
-use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
-use gen7seed_rainbow::app::searcher::search_seeds_parallel;
 use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::infra::table_io::load_table;
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
+use gen7seed_rainbow::{GenerateOptions, Sfmt, generate_table, search_seeds};
 
 const CONSUMPTION: i32 = 417;
 const MINI_TABLE_SIZE: u32 = 1_000;
@@ -34,7 +32,10 @@ static MINI_TABLE: OnceLock<Vec<ChainEntry>> = OnceLock::new();
 
 fn get_mini_table() -> &'static Vec<ChainEntry> {
     MINI_TABLE.get_or_init(|| {
-        let mut entries = generate_table_range_parallel_multi(CONSUMPTION, 0, MINI_TABLE_SIZE);
+        let mut entries = generate_table(
+            CONSUMPTION,
+            GenerateOptions::default().with_range(0, MINI_TABLE_SIZE),
+        );
         sort_table_parallel(&mut entries, CONSUMPTION);
         entries
     })
@@ -114,7 +115,7 @@ fn bench_search_mini_table(c: &mut Criterion) {
     // Benchmark with a known seed
     let needle = generate_needle_from_seed(500, CONSUMPTION);
     group.bench_function("parallel_search", |b| {
-        b.iter(|| search_seeds_parallel(black_box(needle), CONSUMPTION, table))
+        b.iter(|| search_seeds(black_box(needle), CONSUMPTION, table, 0))
     });
 
     group.finish();
@@ -136,7 +137,7 @@ fn bench_search_full_table(c: &mut Criterion) {
     let needle = generate_needle_from_seed(seed, CONSUMPTION);
 
     group.bench_function("parallel_search", |b| {
-        b.iter(|| search_seeds_parallel(black_box(needle), CONSUMPTION, table))
+        b.iter(|| search_seeds(black_box(needle), CONSUMPTION, table, 0))
     });
 
     group.finish();
@@ -149,5 +150,4 @@ criterion_group! {
         bench_search_mini_table,
         bench_search_full_table,
 }
-
 criterion_main!(benches);

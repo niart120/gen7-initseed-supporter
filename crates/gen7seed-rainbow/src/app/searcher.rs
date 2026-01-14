@@ -1,102 +1,45 @@
 //! Search workflow implementation
 //!
-//! This module provides functions for searching initial seeds from needle values
+//! This module provides a unified function for searching initial seeds from needle values
 //! using the rainbow table algorithm.
 
 use crate::constants::MAX_CHAIN_LENGTH;
-use crate::domain::chain::{ChainEntry, verify_chain_with_salt};
+use crate::domain::chain::{ChainEntry, verify_chain};
 use crate::domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash_with_salt};
 use rayon::prelude::*;
 use std::collections::HashSet;
 
 /// Search for initial seeds from needle values
-pub fn search_seeds(needle_values: [u64; 8], consumption: i32, table: &[ChainEntry]) -> Vec<u32> {
-    let target_hash = gen_hash(needle_values);
-    search_all_columns(consumption, target_hash, table)
-}
-
-/// Search for initial seeds from needle values (parallel version)
-pub fn search_seeds_parallel(
-    needle_values: [u64; 8],
-    consumption: i32,
-    table: &[ChainEntry],
-) -> Vec<u32> {
-    let target_hash = gen_hash(needle_values);
-    search_all_columns_parallel(consumption, target_hash, table)
-}
-
-/// Search for initial seeds from needle values with table_id (salt support)
-pub fn search_seeds_with_table_id(
+///
+/// This is the unified entry point for seed search.
+/// Uses rayon parallel processing across all column positions.
+///
+/// # Arguments
+/// * `needle_values` - 8 needle values (0-16 each) representing clock hand positions
+/// * `consumption` - The RNG consumption value
+/// * `table` - The sorted rainbow table to search
+/// * `table_id` - The table identifier (0 to NUM_TABLES-1), used as salt
+///
+/// # Returns
+/// A vector of initial seed candidates found in the table
+pub fn search_seeds(
     needle_values: [u64; 8],
     consumption: i32,
     table: &[ChainEntry],
     table_id: u32,
 ) -> Vec<u32> {
     let target_hash = gen_hash(needle_values);
-    search_all_columns_with_table_id(consumption, target_hash, table, table_id)
-}
 
-/// Search for initial seeds from needle values with table_id (parallel version)
-pub fn search_seeds_parallel_with_table_id(
-    needle_values: [u64; 8],
-    consumption: i32,
-    table: &[ChainEntry],
-    table_id: u32,
-) -> Vec<u32> {
-    let target_hash = gen_hash(needle_values);
-    search_all_columns_parallel_with_table_id(consumption, target_hash, table, table_id)
-}
-
-/// Execute search across all column positions
-fn search_all_columns(consumption: i32, target_hash: u64, table: &[ChainEntry]) -> Vec<u32> {
-    search_all_columns_with_table_id(consumption, target_hash, table, 0)
-}
-
-/// Execute search across all column positions (parallel version)
-fn search_all_columns_parallel(
-    consumption: i32,
-    target_hash: u64,
-    table: &[ChainEntry],
-) -> Vec<u32> {
-    search_all_columns_parallel_with_table_id(consumption, target_hash, table, 0)
-}
-
-/// Execute search across all column positions with table_id
-fn search_all_columns_with_table_id(
-    consumption: i32,
-    target_hash: u64,
-    table: &[ChainEntry],
-    table_id: u32,
-) -> Vec<u32> {
-    let mut results = HashSet::new();
-
-    for column in 0..MAX_CHAIN_LENGTH {
-        let found = search_column_with_table_id(consumption, target_hash, column, table, table_id);
-        results.extend(found);
-    }
-
-    results.into_iter().collect()
-}
-
-/// Execute search across all column positions with table_id (parallel version)
-fn search_all_columns_parallel_with_table_id(
-    consumption: i32,
-    target_hash: u64,
-    table: &[ChainEntry],
-    table_id: u32,
-) -> Vec<u32> {
     let results: HashSet<u32> = (0..MAX_CHAIN_LENGTH)
         .into_par_iter()
-        .flat_map(|column| {
-            search_column_with_table_id(consumption, target_hash, column, table, table_id)
-        })
+        .flat_map(|column| search_column(consumption, target_hash, column, table, table_id))
         .collect();
 
     results.into_iter().collect()
 }
 
-/// Search at a single column position with table_id
-fn search_column_with_table_id(
+/// Search at a single column position
+fn search_column(
     consumption: i32,
     target_hash: u64,
     column: u32,
@@ -119,7 +62,7 @@ fn search_column_with_table_id(
     // Step 3: Verify candidate chains
     for entry in candidates {
         if let Some(found_seed) =
-            verify_chain_with_salt(entry.start_seed, column, target_hash, consumption, table_id)
+            verify_chain(entry.start_seed, column, target_hash, consumption, table_id)
         {
             results.push(found_seed);
         }
@@ -165,12 +108,6 @@ mod tests {
     use super::*;
     use crate::domain::sfmt::Sfmt;
 
-    fn should_run_slow_tests() -> bool {
-        std::env::var("RUN_SLOW_TESTS")
-            .map(|v| v == "1")
-            .unwrap_or(false)
-    }
-
     #[test]
     fn test_binary_search_empty_table() {
         let table: Vec<ChainEntry> = vec![];
@@ -181,7 +118,7 @@ mod tests {
     #[test]
     fn test_search_column_empty_table() {
         let table: Vec<ChainEntry> = vec![];
-        let results = search_column_with_table_id(417, 12345, 0, &table, 0);
+        let results = search_column(417, 12345, 0, &table, 0);
         assert!(results.is_empty());
     }
 
@@ -195,45 +132,10 @@ mod tests {
 
     #[test]
     fn test_search_seeds_empty_table() {
-        if !should_run_slow_tests() {
-            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
-            return;
-        }
         let table: Vec<ChainEntry> = vec![];
         let needle_values = [1u64, 2, 3, 4, 5, 6, 7, 8];
-        let results = search_seeds(needle_values, 417, &table);
+        let results = search_seeds(needle_values, 417, &table, 0);
         assert!(results.is_empty());
-    }
-
-    #[test]
-    fn test_search_seeds_parallel_empty_table() {
-        if !should_run_slow_tests() {
-            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
-            return;
-        }
-        let table: Vec<ChainEntry> = vec![];
-        let needle_values = [1u64, 2, 3, 4, 5, 6, 7, 8];
-        let results = search_seeds_parallel(needle_values, 417, &table);
-        assert!(results.is_empty());
-    }
-
-    #[test]
-    fn test_search_parallel_same_results() {
-        if !should_run_slow_tests() {
-            // Skip by default to keep CI fast; set RUN_SLOW_TESTS=1 to run.
-            return;
-        }
-        // Use a simple test with empty table - both should return empty
-        let table: Vec<ChainEntry> = vec![];
-        let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
-
-        let results_seq = search_seeds(needle_values, 417, &table);
-        let results_par = search_seeds_parallel(needle_values, 417, &table);
-
-        // Both should be empty for empty table
-        let set_seq: HashSet<_> = results_seq.into_iter().collect();
-        let set_par: HashSet<_> = results_par.into_iter().collect();
-        assert_eq!(set_seq, set_par);
     }
 
     // Integration test: Generate needle values from known seed and verify search
