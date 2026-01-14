@@ -64,9 +64,7 @@ fn main() {
 
     // Generate random seeds
     let mut rng = rand::thread_rng();
-    let sample_seeds: Vec<u32> = (0..SAMPLE_COUNT)
-        .map(|_| rng.r#gen::<u32>())
-        .collect();
+    let sample_seeds: Vec<u32> = (0..SAMPLE_COUNT).map(|_| rng.r#gen::<u32>()).collect();
 
     // Measure detection rate
     let mut detected = 0;
