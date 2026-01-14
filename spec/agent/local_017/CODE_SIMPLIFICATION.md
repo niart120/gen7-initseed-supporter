@@ -58,6 +58,12 @@
 | 総コード行数 | 740+ (generator.rs) | 300未満 |
 | 保守性 | 低（機能追加時に全パターン対応必要） | 高（1関数に集約） |
 
+### 1.4 移行方針
+
+- **破壊的変更を許容**: 後方互換性のための deprecated ラッパーは作成しない
+- **一括移行**: 段階的移行ではなく、全ての呼び出し元を一度に更新する
+- **ドキュメント更新**: ファイル削除を伴わないため、README.md や instructions.md の修正は不要
+
 ---
 
 ## 2. 対象ファイル
@@ -147,11 +153,7 @@ pub fn compute_chain_with_salt(start_seed: u32, consumption: i32, table_id: u32)
 // After (1関数、table_id はデフォルト引数相当)
 pub fn compute_chain(start_seed: u32, consumption: i32, table_id: u32) -> ChainEntry
 
-// 互換性ヘルパー（deprecated）
-#[deprecated(since = "0.2.0", note = "Use compute_chain(seed, consumption, 0) instead")]
-pub fn compute_chain_no_salt(start_seed: u32, consumption: i32) -> ChainEntry {
-    compute_chain(start_seed, consumption, 0)
-}
+// 旧関数は削除し、呼び出し元を直接更新する
 ```
 
 ---
@@ -327,7 +329,7 @@ pub fn search_seeds(
 | `test_generate_deterministic` | 同一パラメータで同一結果 |
 | `test_search_default` | デフォルトオプションでの検索 |
 | `test_search_with_table_id` | table_id指定での検索 |
-| `test_backward_compat` | 旧API互換ヘルパーの動作確認 |
+
 
 ### 5.2 統合テスト
 
@@ -363,10 +365,10 @@ pub fn search_seeds(
 
 ### Phase 4: chain.rs のsalt統一
 
-- [ ] `compute_chain` にtable_id引数を追加
-- [ ] `verify_chain` にtable_id引数を追加
-- [ ] `compute_chains_x16` にtable_id引数を追加
-- [ ] 旧関数を deprecated としてラップ
+- [ ] `compute_chain` にtable_id引数を追加（旧関数は削除）
+- [ ] `verify_chain` にtable_id引数を追加（旧関数は削除）
+- [ ] `compute_chains_x16` にtable_id引数を追加（旧関数は削除）
+- [ ] `enumerate_chain_seeds` 系も同様に統一
 
 ### Phase 5: 呼び出し元の移行
 
@@ -376,10 +378,10 @@ pub fn search_seeds(
 - [ ] examples/*.rs を新API対応
 - [ ] tests/*.rs を新API対応
 
-### Phase 6: 旧関数の削除
+### Phase 6: クリーンアップ
 
-- [ ] 移行完了後、deprecated 関数を削除
 - [ ] 不要なfeature条件分岐を削除
+- [ ] 未使用のimportを削除
 
 ### Phase 7: 検証
 
@@ -390,35 +392,7 @@ pub fn search_seeds(
 
 ---
 
-## 7. 移行ガイド（ユーザー向け）
-
-### 7.1 テーブル生成
-
-```rust
-// Before
-let entries = generate_table_parallel_multi_with_table_id_and_progress(
-    417, 3, |c, t| println!("{}/{}", c, t)
-);
-
-// After
-let entries = generate_table(417, GenerateOptions::default()
-    .with_table_id(3)
-    .with_progress(|c, t| println!("{}/{}", c, t)));
-```
-
-### 7.2 検索
-
-```rust
-// Before
-let results = search_seeds_parallel_with_table_id(needle, 417, &table, 3);
-
-// After
-let results = search_seeds(needle, 417, &table, SearchOptions::default().with_table_id(3));
-```
-
----
-
-## 8. 代替案検討
+## 7. 代替案検討
 
 ### 8.1 マクロによる生成
 
@@ -434,10 +408,10 @@ let results = search_seeds(needle, 417, &table, SearchOptions::default().with_ta
 
 ---
 
-## 9. リスクと対策
+## 8. リスクと対策
 
 | リスク | 影響 | 対策 |
 |--------|------|------|
-| APIブレイキングチェンジ | 外部利用者への影響 | deprecated 期間を設け段階的に移行 |
+| APIブレイキングチェンジ | 外部利用者への影響 | 内部ツールのため許容（外部公開していない） |
 | 性能劣化 | ベンチマーク悪化 | インライン展開・最適化の確認 |
 | バグ混入 | 既存機能の破壊 | 既存テストを維持しつつ移行 |
