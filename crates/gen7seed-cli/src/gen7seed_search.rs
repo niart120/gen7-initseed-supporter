@@ -9,9 +9,9 @@
 //!
 //! This tool searches across all 8 tables sequentially, stopping when a match is found.
 
-use gen7seed_rainbow::app::searcher::search_seeds_parallel_with_table_id;
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, NUM_TABLES, SUPPORTED_CONSUMPTIONS};
 use gen7seed_rainbow::infra::table_io::get_sorted_table_path_with_table_id;
+use gen7seed_rainbow::search_seeds;
 use std::env;
 use std::io::{self, Write};
 use std::time::Instant;
@@ -185,20 +185,10 @@ fn main() {
                 tables_searched += 1;
 
                 #[cfg(feature = "mmap")]
-                let results = search_seeds_parallel_with_table_id(
-                    needle_values,
-                    consumption,
-                    table.as_slice(),
-                    table_id,
-                );
+                let results = search_seeds(needle_values, consumption, table.as_slice(), table_id);
 
                 #[cfg(not(feature = "mmap"))]
-                let results = search_seeds_parallel_with_table_id(
-                    needle_values,
-                    consumption,
-                    table,
-                    table_id,
-                );
+                let results = search_seeds(needle_values, consumption, table, table_id);
 
                 if !results.is_empty() {
                     println!("  Found in table {}!", table_id);

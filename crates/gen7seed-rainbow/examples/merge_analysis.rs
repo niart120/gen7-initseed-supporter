@@ -62,7 +62,7 @@ fn main() {
         });
 
         // 16チェーンを同時展開し、ビットマップに記録
-        enumerate_chain_seeds_x16(seeds, CONSUMPTION, |seed_batch| {
+        enumerate_chain_seeds_x16(seeds, CONSUMPTION, 0, |seed_batch| {
             for (i, &seed) in seed_batch.iter().enumerate() {
                 // 有効なシードのみ記録
                 if base_seed + (i as u32) < num_chains {

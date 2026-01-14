@@ -27,8 +27,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
-use gen7seed_rainbow::app::searcher::search_seeds_parallel_with_table_id;
 use gen7seed_rainbow::infra::table_io::load_table;
+use gen7seed_rainbow::search_seeds;
 use rand::Rng;
 
 const CONSUMPTION: i32 = 417;
@@ -87,8 +87,7 @@ fn main() {
         // Search across all tables
         let mut found = false;
         for (table_id, table) in tables.iter().enumerate() {
-            let results =
-                search_seeds_parallel_with_table_id(needle, CONSUMPTION, table, table_id as u32);
+            let results = search_seeds(needle, CONSUMPTION, table, table_id as u32);
             if results.contains(&seed) {
                 found = true;
                 break;

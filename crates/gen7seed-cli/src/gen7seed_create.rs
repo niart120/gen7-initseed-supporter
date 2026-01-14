@@ -12,15 +12,12 @@
 //!   gen7seed_create 417              # Generate all 8 tables
 //!   gen7seed_create 417 --table-id 0 # Generate only table 0
 
-#[cfg(feature = "multi-sfmt")]
-use gen7seed_rainbow::app::generator::generate_table_parallel_multi_with_table_id_and_progress;
-#[cfg(not(feature = "multi-sfmt"))]
-use gen7seed_rainbow::app::generator::generate_table_parallel_with_table_id_and_progress;
 use gen7seed_rainbow::constants::{NUM_TABLES, SUPPORTED_CONSUMPTIONS};
 use gen7seed_rainbow::infra::table_io::{
     get_sorted_table_path_with_table_id, get_table_path_with_table_id, save_table,
 };
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
+use gen7seed_rainbow::{GenerateOptions, generate_table};
 use std::env;
 use std::io::{self, Write};
 use std::time::Instant;
@@ -128,17 +125,11 @@ fn generate_single_table(consumption: i32, table_id: u32, no_sort: bool, keep_un
         }
     };
 
-    #[cfg(feature = "multi-sfmt")]
-    let mut entries = generate_table_parallel_multi_with_table_id_and_progress(
+    let mut entries = generate_table(
         consumption,
-        table_id,
-        progress_callback,
-    );
-    #[cfg(not(feature = "multi-sfmt"))]
-    let mut entries = generate_table_parallel_with_table_id_and_progress(
-        consumption,
-        table_id,
-        progress_callback,
+        GenerateOptions::default()
+            .with_table_id(table_id)
+            .with_progress(progress_callback),
     );
 
     println!();

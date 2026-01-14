@@ -6,14 +6,10 @@ use std::time::Duration;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::{
-    app::generator::{generate_table_range, generate_table_range_parallel},
-    app::searcher::search_seeds_parallel,
-    domain::chain::compute_chain,
-    infra::table_sort::sort_table_parallel,
+    GenerateOptions, domain::chain::compute_chain, generate_table,
+    infra::table_sort::sort_table_parallel, search_seeds,
 };
 
-#[cfg(feature = "multi-sfmt")]
-use gen7seed_rainbow::app::generator::generate_table_range_parallel_multi;
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::domain::chain::compute_chains_x16;
 #[cfg(feature = "multi-sfmt")]
@@ -31,7 +27,7 @@ fn bench_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("chain");
 
     group.bench_function("compute_chain_full", |b| {
-        b.iter(|| compute_chain(black_box(12345), CONSUMPTION))
+        b.iter(|| compute_chain(black_box(12345), CONSUMPTION, 0))
     });
 
     group.finish();
@@ -40,12 +36,12 @@ fn bench_chain(c: &mut Criterion) {
 fn bench_search_parallel(c: &mut Criterion) {
     let mut group = c.benchmark_group("search");
 
-    let mut table = generate_table_range(CONSUMPTION, 0, 1000);
+    let mut table = generate_table(CONSUMPTION, GenerateOptions::default().with_range(0, 1000));
     sort_table_parallel(&mut table, CONSUMPTION);
     let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
 
     group.bench_function("parallel", |b| {
-        b.iter(|| search_seeds_parallel(black_box(needle_values), CONSUMPTION, &table))
+        b.iter(|| search_seeds(black_box(needle_values), CONSUMPTION, &table, 0))
     });
 
     group.finish();
@@ -54,16 +50,9 @@ fn bench_search_parallel(c: &mut Criterion) {
 fn bench_table_generation_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("table_generation_comparison");
 
-    group.bench_function("parallel_rayon_1000", |b| {
-        b.iter(|| generate_table_range_parallel(CONSUMPTION, 0, 1000))
+    group.bench_function("parallel_1000", |b| {
+        b.iter(|| generate_table(CONSUMPTION, GenerateOptions::default().with_range(0, 1000)))
     });
-
-    #[cfg(feature = "multi-sfmt")]
-    {
-        group.bench_function("parallel_multi_sfmt_1000", |b| {
-            b.iter(|| generate_table_range_parallel_multi(CONSUMPTION, 0, 1000))
-        });
-    }
 
     group.finish();
 }
@@ -92,7 +81,7 @@ fn bench_multi_sfmt_core(c: &mut Criterion) {
     });
 
     group.bench_function("chain_multi_x16", |b| {
-        b.iter(|| compute_chains_x16(black_box(seeds), CONSUMPTION))
+        b.iter(|| compute_chains_x16(black_box(seeds), CONSUMPTION, 0))
     });
 
     group.bench_function("chain_multi_x64", |b| {
@@ -100,7 +89,7 @@ fn bench_multi_sfmt_core(c: &mut Criterion) {
             let mut results = Vec::with_capacity(64);
             for batch in 0..4 {
                 let batch_seeds: [u32; 16] = std::array::from_fn(|i| (batch * 16 + i) as u32);
-                let batch_results = compute_chains_x16(black_box(batch_seeds), CONSUMPTION);
+                let batch_results = compute_chains_x16(black_box(batch_seeds), CONSUMPTION, 0);
                 results.extend(batch_results);
             }
             results
