@@ -1,7 +1,7 @@
 //! チェーンマージ（衝突）の分析
 //!
 //! - 目的: m本のチェーンを生成し、経路上のSeedが他チェーンとどれだけ重複するかを測定。
-//! - 方法: 全チェーンの経路上Seedをビットマップに記録し、ユニーク数と理論最大値を比較。
+//! - 方法: 全チェーンの経路上SeedをSeedBitmapに記録し、ユニーク数と理論最大値を比較。
 //! - 高速化: rayon + multi-sfmt (16並列SFMT) を使用。
 //! - 出力: 実際のユニークSeed数、理論最大値、マージによる損失率。
 //!
@@ -17,6 +17,7 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
+use gen7seed_rainbow::SeedBitmap;
 use gen7seed_rainbow::constants::MAX_CHAIN_LENGTH;
 use gen7seed_rainbow::domain::chain::enumerate_chain_seeds_x16;
 
@@ -39,10 +40,9 @@ fn main() {
 
     let start = Instant::now();
 
-    // ビットマップ: 2^32 / 64 = 67,108,864 個の AtomicU64
-    // サイズ: 512 MB
+    // SeedBitmap を使用（512 MB）
     println!("Allocating bitmap (512 MB)...");
-    let bitmap = create_bitmap();
+    let bitmap = SeedBitmap::new();
     println!("  Done in {:.2}s", start.elapsed().as_secs_f64());
 
     // 16チェーン単位で並列処理
@@ -66,7 +66,7 @@ fn main() {
             for (i, &seed) in seed_batch.iter().enumerate() {
                 // 有効なシードのみ記録
                 if base_seed + (i as u32) < num_chains {
-                    set_bit(&bitmap, seed);
+                    bitmap.set(seed);
                 }
             }
         });
@@ -91,7 +91,7 @@ fn main() {
     // ビットマップからユニーク数をカウント
     println!("Counting unique seeds...");
     let count_start = Instant::now();
-    let unique_count = count_bits(&bitmap);
+    let unique_count = bitmap.count_reachable();
     println!("  Done in {:.2}s", count_start.elapsed().as_secs_f64());
 
     let elapsed = start.elapsed();
@@ -140,28 +140,6 @@ fn parse_num_chains() -> u32 {
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_NUM_CHAINS)
-}
-
-/// ビットマップを作成（512MB）
-fn create_bitmap() -> Vec<AtomicU64> {
-    const NUM_U64: usize = (1u64 << 32) as usize / 64; // 67,108,864
-    (0..NUM_U64).map(|_| AtomicU64::new(0)).collect()
-}
-
-/// ビットをセット
-#[inline]
-fn set_bit(bitmap: &[AtomicU64], seed: u32) {
-    let index = (seed as usize) / 64;
-    let bit = 1u64 << (seed % 64);
-    bitmap[index].fetch_or(bit, Ordering::Relaxed);
-}
-
-/// セットされたビット数をカウント（並列）
-fn count_bits(bitmap: &[AtomicU64]) -> u64 {
-    bitmap
-        .par_iter()
-        .map(|atomic| atomic.load(Ordering::Relaxed).count_ones() as u64)
-        .sum()
 }
 
 /// 累積マージモデルによる予測

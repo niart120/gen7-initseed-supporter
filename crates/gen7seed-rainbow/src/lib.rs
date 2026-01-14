@@ -31,6 +31,13 @@ pub use app::coverage::{
     extract_missing_seeds_with_progress,
 };
 
+// Re-export multi-table coverage analysis types (multi-sfmt feature)
+#[cfg(feature = "multi-sfmt")]
+pub use app::coverage::{
+    build_seed_bitmap_multi_table, build_seed_bitmap_with_salt,
+    build_seed_bitmap_with_salt_and_progress, extract_missing_seeds_multi_table,
+};
+
 // Re-export missing seeds I/O
 pub use infra::missing_seeds_io::{get_missing_seeds_path, load_missing_seeds, save_missing_seeds};
 

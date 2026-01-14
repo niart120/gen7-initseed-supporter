@@ -10,7 +10,7 @@ use crate::domain::hash::{gen_hash_from_seed, reduce_hash, reduce_hash_with_salt
 use crate::domain::hash::gen_hash_from_seed_x16;
 
 #[cfg(feature = "multi-sfmt")]
-use crate::domain::hash::{reduce_hash_x16, reduce_hash_x16_with_salt};
+use crate::domain::hash::reduce_hash_x16_with_salt;
 
 /// Chain entry structure
 ///
@@ -195,8 +195,30 @@ pub fn enumerate_chain_seeds(start_seed: u32, consumption: i32) -> Vec<u32> {
 /// * `consumption` - consumption value
 /// * `on_seeds` - callback invoked at each step with 16 seeds
 #[cfg(feature = "multi-sfmt")]
-pub fn enumerate_chain_seeds_x16<F>(start_seeds: [u32; 16], consumption: i32, mut on_seeds: F)
+pub fn enumerate_chain_seeds_x16<F>(start_seeds: [u32; 16], consumption: i32, on_seeds: F)
 where
+    F: FnMut([u32; 16]),
+{
+    enumerate_chain_seeds_x16_with_salt(start_seeds, consumption, 0, on_seeds)
+}
+
+/// Enumerate seeds from 16 chains simultaneously with salt (multi-sfmt version)
+///
+/// Expands 16 chains in parallel using salted reduction function,
+/// calling the callback with 16 seeds at each step (including the initial seeds).
+///
+/// # Arguments
+/// * `start_seeds` - 16 starting seeds
+/// * `consumption` - consumption value
+/// * `table_id` - The table identifier (0 to NUM_TABLES-1), used as salt
+/// * `on_seeds` - callback invoked at each step with 16 seeds
+#[cfg(feature = "multi-sfmt")]
+pub fn enumerate_chain_seeds_x16_with_salt<F>(
+    start_seeds: [u32; 16],
+    consumption: i32,
+    table_id: u32,
+    mut on_seeds: F,
+) where
     F: FnMut([u32; 16]),
 {
     let mut current_seeds = start_seeds;
@@ -204,7 +226,7 @@ where
 
     for n in 0..MAX_CHAIN_LENGTH {
         let hashes = gen_hash_from_seed_x16(current_seeds, consumption);
-        current_seeds = reduce_hash_x16(hashes, n);
+        current_seeds = reduce_hash_x16_with_salt(hashes, n, table_id);
         on_seeds(current_seeds);
     }
 }
