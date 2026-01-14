@@ -47,9 +47,29 @@ pub fn gen_hash_from_seed(seed: u32, consumption: i32) -> u64 {
 ///
 /// The essence of rainbow tables: incorporating chain position (column) into the reduction function.
 /// This ensures that the same hash value produces different results at different positions.
+///
+/// Note: This is equivalent to `reduce_hash_with_salt(hash, column, 0)`.
 #[inline]
 pub fn reduce_hash(hash: u64, column: u32) -> u32 {
-    let mut h = hash.wrapping_add(column as u64);
+    reduce_hash_with_salt(hash, column, 0)
+}
+
+/// Reduction function with salt (table_id) for multi-table support
+///
+/// Applies SplitMix64-style mixing function with salt to create independent
+/// reduction results for each table. This enables multi-table strategy where
+/// each table covers different parts of the seed space.
+///
+/// # Arguments
+/// * `hash` - The hash value to reduce
+/// * `column` - The chain position (column index)
+/// * `table_id` - The table identifier (0 to NUM_TABLES-1), used as salt
+#[inline]
+pub fn reduce_hash_with_salt(hash: u64, column: u32, table_id: u32) -> u32 {
+    // Apply salt using golden ratio constant for good mixing
+    let salted = hash ^ ((table_id as u64).wrapping_mul(0x9e3779b97f4a7c15));
+
+    let mut h = salted.wrapping_add(column as u64);
     h = (h ^ (h >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
     h = (h ^ (h >> 27)).wrapping_mul(0x94d049bb133111eb);
     h ^= h >> 31;
@@ -66,18 +86,30 @@ pub fn reduce_hash(hash: u64, column: u32) -> u32 {
 /// - AVX512: 1 × u64x16 operation
 /// - AVX2: 2 × u64x8 operations
 /// - SSE2: 4 × u64x4 operations
+///
+/// Note: This is equivalent to `reduce_hash_x16_with_salt(hashes, column, 0)`.
 #[cfg(feature = "multi-sfmt")]
 #[inline]
 pub fn reduce_hash_x16(hashes: [u64; 16], column: u32) -> [u32; 16] {
+    reduce_hash_x16_with_salt(hashes, column, 0)
+}
+
+/// Reduce 16 hash values simultaneously with salt using SIMD
+///
+/// This is the 16-parallel version of `reduce_hash_with_salt`.
+#[cfg(feature = "multi-sfmt")]
+#[inline]
+pub fn reduce_hash_x16_with_salt(hashes: [u64; 16], column: u32, table_id: u32) -> [u32; 16] {
     use std::simd::Simd;
 
     // Use u64x16 for full SIMD width (AVX512 will use single instruction)
     let h = Simd::from_array(hashes);
+    let salt = Simd::splat((table_id as u64).wrapping_mul(0x9e3779b97f4a7c15));
     let col = Simd::splat(column as u64);
     let c1 = Simd::splat(0xbf58476d1ce4e5b9u64);
     let c2 = Simd::splat(0x94d049bb133111ebu64);
 
-    let mut h = h + col;
+    let mut h = (h ^ salt) + col;
     h = (h ^ (h >> 30)) * c1;
     h = (h ^ (h >> 27)) * c2;
     h ^= h >> 31;
@@ -414,5 +446,88 @@ mod tests {
 
         // Different columns should produce different results
         assert_ne!(results_col0, results_col1);
+    }
+
+    // =============================================================================
+    // reduce_hash_with_salt tests (multi-table support)
+    // =============================================================================
+
+    #[test]
+    fn test_reduce_hash_with_salt_different_tables() {
+        let hash = 0xCAFEBABE12345678u64;
+        let column = 100;
+
+        // Different table_ids should produce different results
+        let result0 = reduce_hash_with_salt(hash, column, 0);
+        let result1 = reduce_hash_with_salt(hash, column, 1);
+        let result2 = reduce_hash_with_salt(hash, column, 2);
+
+        assert_ne!(result0, result1, "table_id 0 vs 1 should differ");
+        assert_ne!(result1, result2, "table_id 1 vs 2 should differ");
+        assert_ne!(result0, result2, "table_id 0 vs 2 should differ");
+    }
+
+    #[test]
+    fn test_reduce_hash_backward_compat() {
+        // reduce_hash(h, c) == reduce_hash_with_salt(h, c, 0)
+        let hash = 0xDEADBEEF12345678u64;
+        for column in [0, 1, 100, 1000, 4095] {
+            let result_legacy = reduce_hash(hash, column);
+            let result_salt0 = reduce_hash_with_salt(hash, column, 0);
+            assert_eq!(
+                result_legacy, result_salt0,
+                "Legacy reduce_hash must equal reduce_hash_with_salt with table_id=0"
+            );
+        }
+    }
+
+    #[test]
+    fn test_reduce_hash_with_salt_deterministic() {
+        let hash = 0x123456789ABCDEFu64;
+        let column = 42;
+        let table_id = 3;
+
+        let result1 = reduce_hash_with_salt(hash, column, table_id);
+        let result2 = reduce_hash_with_salt(hash, column, table_id);
+        assert_eq!(result1, result2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_with_salt_matches_single() {
+        let hashes: [u64; 16] = std::array::from_fn(|i| {
+            0x123456789ABCDEF0u64.wrapping_add(i as u64 * 0x1111111111111111)
+        });
+
+        for table_id in [0, 1, 3, 7] {
+            for column in [0, 1, 100, 1000] {
+                let results_x16 = reduce_hash_x16_with_salt(hashes, column, table_id);
+
+                for (i, &hash) in hashes.iter().enumerate() {
+                    let single_result = reduce_hash_with_salt(hash, column, table_id);
+                    assert_eq!(
+                        results_x16[i], single_result,
+                        "Mismatch at index {} for column {} table_id {}",
+                        i, column, table_id
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_backward_compat() {
+        // reduce_hash_x16(h, c) == reduce_hash_x16_with_salt(h, c, 0)
+        let hashes: [u64; 16] = std::array::from_fn(|i| i as u64 * 0xDEADBEEF);
+
+        for column in [0, 100, 1000] {
+            let result_legacy = reduce_hash_x16(hashes, column);
+            let result_salt0 = reduce_hash_x16_with_salt(hashes, column, 0);
+            assert_eq!(
+                result_legacy, result_salt0,
+                "Legacy reduce_hash_x16 must equal reduce_hash_x16_with_salt with table_id=0"
+            );
+        }
     }
 }

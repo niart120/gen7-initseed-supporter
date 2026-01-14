@@ -1,33 +1,45 @@
-//! 欠落シード抽出スクリプト
+//! 欠落シード抽出スクリプト（マルチテーブル対応版）
 //!
-//! レインボーテーブルからアクセス不可能なシード（欠落シード）を抽出して
+//! 8枚のレインボーテーブルからアクセス不可能なシード（欠落シード）を抽出して
 //! バイナリファイルに出力する。
 //!
 //! ## 実行方法
 //!
 //! ```powershell
-//! # ソート済みテーブルが必要
+//! # 全8枚のソート済みテーブルが必要
 //! cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 //! ```
 //!
 //! ## 出力例
 //!
 //! ```text
-//! [Missing Seeds Extraction]
-//! Table: target/release/417.sorted.bin
-//! Entries: 12,600,000
+//! [Missing Seeds Extraction - Multi-Table]
+//! Directory: target/release
+//! Tables: 8
 //!
-//! Building bitmap...
-//!   Progress: 100.0% (12,600,000/12,600,000)
+//! Loading tables...
+//!   Table 0: 2,097,152 entries
+//!   Table 1: 2,097,152 entries
+//!   ...
+//!   Table 7: 2,097,152 entries
+//! Loaded 8 tables in 0.15s
+//!
+//! Building combined bitmap...
+//!   Table 0: 100.0% (2,097,152/2,097,152)
+//!   Table 1: 100.0% (2,097,152/2,097,152)
+//!   ...
+//!   Table 7: 100.0% (2,097,152/2,097,152)
 //!
 //! Extracting missing seeds...
-//!   Reachable: 4,234,567,890 (98.57%)
-//!   Missing: 60,399,406 (1.43%)
+//!
+//! Results:
+//!   Reachable: 4,289,456,789 (99.87%)
+//!   Missing:   5,510,507 (0.13%)
 //!
 //! Saving to consumption_417_missing.bin...
-//!   File size: 241.60 MB
+//!   File size: 22.04 MB
 //!
-//! Done in 1234.56s
+//! Done in 345.67s
 //! ```
 
 use std::io::Write;
@@ -35,45 +47,74 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
-use gen7seed_rainbow::app::coverage::extract_missing_seeds_with_progress;
+use gen7seed_rainbow::app::coverage::extract_missing_seeds_multi_table;
+use gen7seed_rainbow::constants::NUM_TABLES;
 use gen7seed_rainbow::infra::missing_seeds_io::{get_missing_seeds_path, save_missing_seeds};
 use gen7seed_rainbow::infra::table_io::load_table;
 
 const CONSUMPTION: i32 = 417;
 
 fn main() {
-    let table_path = get_table_path();
+    println!("[Missing Seeds Extraction - Multi-Table]");
 
-    println!("[Missing Seeds Extraction]");
-    println!("Table: {}", table_path.display());
-
-    // Load table
-    println!("Loading table...");
     let start = Instant::now();
-    let table = match load_table(&table_path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: Failed to load table: {}", e);
-            eprintln!(
-                "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
-            );
-            std::process::exit(1);
+
+    // Load all tables
+    println!("Loading tables...");
+    let load_start = Instant::now();
+    let mut tables: Vec<(Vec<_>, u32)> = Vec::with_capacity(NUM_TABLES as usize);
+    let mut total_entries = 0u64;
+
+    for table_id in 0..NUM_TABLES {
+        let table_path = get_table_path(table_id);
+        match load_table(&table_path) {
+            Ok(table) => {
+                println!(
+                    "  Table {}: {} entries",
+                    table_id,
+                    format_number(table.len() as u64)
+                );
+                total_entries += table.len() as u64;
+                tables.push((table, table_id));
+            }
+            Err(e) => {
+                eprintln!("Error: Failed to load table {}: {}", table_id, e);
+                eprintln!(
+                    "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- {} --table-id {}",
+                    CONSUMPTION, table_id
+                );
+                std::process::exit(1);
+            }
         }
-    };
+    }
+
     println!(
-        "Loaded {} entries in {:.2}s\n",
-        table.len(),
-        start.elapsed().as_secs_f64()
+        "Loaded {} tables ({} total entries) in {:.2}s\n",
+        tables.len(),
+        format_number(total_entries),
+        load_start.elapsed().as_secs_f64()
     );
 
     // Extract missing seeds with progress
-    println!("Processing...");
+    println!("Building combined bitmap...");
     let phase_start = Instant::now();
     let last_progress = AtomicU32::new(0);
+    let current_table = AtomicU32::new(u32::MAX);
 
-    let result =
-        extract_missing_seeds_with_progress(&table, CONSUMPTION, |phase, current, total| {
+    let result = extract_missing_seeds_multi_table(
+        &tables,
+        CONSUMPTION,
+        |phase, table_id, current, total| {
             if phase == "Building bitmap" {
+                let prev_table = current_table.swap(table_id, Ordering::Relaxed);
+                if prev_table != table_id {
+                    // New table started
+                    if prev_table != u32::MAX {
+                        println!(); // Newline after previous table
+                    }
+                    last_progress.store(0, Ordering::Relaxed);
+                }
+
                 let percent = if total > 0 {
                     (current as f64 / total as f64 * 100.0) as u32
                 } else {
@@ -83,31 +124,33 @@ fn main() {
                 if percent > last || current == total {
                     last_progress.store(percent, Ordering::Relaxed);
                     print!(
-                        "\r  Building bitmap: {:.1}% ({}/{})",
+                        "\r  Table {}: {:.1}% ({}/{})",
+                        table_id,
                         current as f64 / total as f64 * 100.0,
-                        current,
-                        total
+                        format_number(current as u64),
+                        format_number(total as u64)
                     );
                     let _ = std::io::stdout().flush();
                 }
             }
-        });
+        },
+    );
 
     println!();
     println!(
-        "  Completed in {:.2}s\n",
+        "\nCompleted in {:.2}s\n",
         phase_start.elapsed().as_secs_f64()
     );
 
     // Print results
     println!("Results:");
     println!(
-        "  Reachable: {} ({:.2}%)",
+        "  Reachable: {} ({:.4}%)",
         format_number(result.reachable_count),
         result.coverage * 100.0
     );
     println!(
-        "  Missing:   {} ({:.2}%)",
+        "  Missing:   {} ({:.4}%)",
         format_number(result.missing_count),
         (1.0 - result.coverage) * 100.0
     );
@@ -130,20 +173,15 @@ fn main() {
     println!("\nDone in {:.2}s", start.elapsed().as_secs_f64());
 }
 
-fn get_table_path() -> PathBuf {
-    // Check command line argument first
-    if let Some(path) = std::env::args().nth(1) {
-        return PathBuf::from(path);
-    }
+fn get_table_path(table_id: u32) -> PathBuf {
+    // Check command line argument for directory override
+    let base_dir = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target/release"));
 
-    // Default to sorted table in target/release
-    let sorted_path = PathBuf::from(format!("target/release/{}.sorted.bin", CONSUMPTION));
-    if sorted_path.exists() {
-        return sorted_path;
-    }
-
-    // Fallback to unsorted table
-    PathBuf::from(format!("target/release/{}.bin", CONSUMPTION))
+    // Format: {consumption}_{table_id}.sorted.bin
+    base_dir.join(format!("{}_{}.sorted.bin", CONSUMPTION, table_id))
 }
 
 fn format_number(n: u64) -> String {
