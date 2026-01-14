@@ -4,13 +4,13 @@
 //! chain generation and verification in rainbow table operations.
 
 use crate::constants::MAX_CHAIN_LENGTH;
-use crate::domain::hash::{gen_hash_from_seed, reduce_hash};
+use crate::domain::hash::{gen_hash_from_seed, reduce_hash, reduce_hash_with_salt};
 
 #[cfg(feature = "multi-sfmt")]
 use crate::domain::hash::gen_hash_from_seed_x16;
 
 #[cfg(feature = "multi-sfmt")]
-use crate::domain::hash::reduce_hash_x16;
+use crate::domain::hash::{reduce_hash_x16, reduce_hash_x16_with_salt};
 
 /// Chain entry structure
 ///
@@ -39,12 +39,27 @@ impl ChainEntry {
 ///
 /// Starting from start_seed, repeat hash → reduce MAX_CHAIN_LENGTH times
 /// and return the ending seed.
+///
+/// Note: This is equivalent to `compute_chain_with_salt(start_seed, consumption, 0)`.
 pub fn compute_chain(start_seed: u32, consumption: i32) -> ChainEntry {
+    compute_chain_with_salt(start_seed, consumption, 0)
+}
+
+/// Compute a single chain with salt (table_id) for multi-table support
+///
+/// Starting from start_seed, repeat hash → reduce MAX_CHAIN_LENGTH times
+/// using the salted reduction function.
+///
+/// # Arguments
+/// * `start_seed` - The starting seed of the chain
+/// * `consumption` - The RNG consumption value
+/// * `table_id` - The table identifier (0 to NUM_TABLES-1), used as salt
+pub fn compute_chain_with_salt(start_seed: u32, consumption: i32, table_id: u32) -> ChainEntry {
     let mut current_seed = start_seed;
 
     for n in 0..MAX_CHAIN_LENGTH {
         let hash = gen_hash_from_seed(current_seed, consumption);
-        current_seed = reduce_hash(hash, n);
+        current_seed = reduce_hash_with_salt(hash, n, table_id);
     }
 
     ChainEntry {
@@ -56,18 +71,44 @@ pub fn compute_chain(start_seed: u32, consumption: i32) -> ChainEntry {
 /// Verify a chain and check if the hash at the specified position matches
 ///
 /// If matched, returns the seed at that position (= initial seed candidate).
+///
+/// Note: This is equivalent to `verify_chain_with_salt(start_seed, column, target_hash, consumption, 0)`.
 pub fn verify_chain(
     start_seed: u32,
     column: u32,
     target_hash: u64,
     consumption: i32,
 ) -> Option<u32> {
+    verify_chain_with_salt(start_seed, column, target_hash, consumption, 0)
+}
+
+/// Verify a chain with salt (table_id) for multi-table support
+///
+/// Traces the chain to the specified column position and checks if the
+/// hash at that position matches the target hash.
+///
+/// # Arguments
+/// * `start_seed` - The starting seed of the chain
+/// * `column` - The column position to verify
+/// * `target_hash` - The expected hash value
+/// * `consumption` - The RNG consumption value
+/// * `table_id` - The table identifier (0 to NUM_TABLES-1), used as salt
+///
+/// # Returns
+/// `Some(seed)` if the hash matches, `None` otherwise
+pub fn verify_chain_with_salt(
+    start_seed: u32,
+    column: u32,
+    target_hash: u64,
+    consumption: i32,
+    table_id: u32,
+) -> Option<u32> {
     let mut s = start_seed;
 
     // Trace the chain to the column position
     for n in 0..column {
         let h = gen_hash_from_seed(s, consumption);
-        s = reduce_hash(h, n);
+        s = reduce_hash_with_salt(h, n, table_id);
     }
 
     // Calculate hash at this position
@@ -88,16 +129,31 @@ pub fn verify_chain(
 ///
 /// This function computes chains from 16 different starting seeds in parallel
 /// using SIMD operations, providing significant performance improvement.
+///
+/// Note: This is equivalent to `compute_chains_x16_with_salt(start_seeds, consumption, 0)`.
 #[cfg(feature = "multi-sfmt")]
 pub fn compute_chains_x16(start_seeds: [u32; 16], consumption: i32) -> [ChainEntry; 16] {
+    compute_chains_x16_with_salt(start_seeds, consumption, 0)
+}
+
+/// Compute 16 chains simultaneously with salt (table_id) for multi-table support
+///
+/// This function computes chains from 16 different starting seeds in parallel
+/// using SIMD operations with salted reduction function.
+#[cfg(feature = "multi-sfmt")]
+pub fn compute_chains_x16_with_salt(
+    start_seeds: [u32; 16],
+    consumption: i32,
+    table_id: u32,
+) -> [ChainEntry; 16] {
     let mut current_seeds = start_seeds;
 
     for n in 0..MAX_CHAIN_LENGTH {
         // Calculate 16 hashes simultaneously
         let hashes = gen_hash_from_seed_x16(current_seeds, consumption);
 
-        // Apply reduce to all 16 hashes using SIMD
-        current_seeds = reduce_hash_x16(hashes, n);
+        // Apply reduce to all 16 hashes using SIMD with salt
+        current_seeds = reduce_hash_x16_with_salt(hashes, n, table_id);
     }
 
     // Create result entries
@@ -345,5 +401,123 @@ mod tests {
 
         // Should be called MAX_CHAIN_LENGTH + 1 times (initial + each step)
         assert_eq!(callback_count, MAX_CHAIN_LENGTH + 1);
+    }
+
+    // =============================================================================
+    // Salt (table_id) support tests
+    // =============================================================================
+
+    #[test]
+    fn test_compute_chain_with_salt_different_tables() {
+        let seed = 12345u32;
+        let consumption = 417;
+
+        // Different table_ids should produce different end_seeds
+        let entry0 = compute_chain_with_salt(seed, consumption, 0);
+        let entry1 = compute_chain_with_salt(seed, consumption, 1);
+        let entry2 = compute_chain_with_salt(seed, consumption, 2);
+
+        assert_ne!(
+            entry0.end_seed, entry1.end_seed,
+            "table 0 vs 1 should differ"
+        );
+        assert_ne!(
+            entry1.end_seed, entry2.end_seed,
+            "table 1 vs 2 should differ"
+        );
+        assert_ne!(
+            entry0.end_seed, entry2.end_seed,
+            "table 0 vs 2 should differ"
+        );
+    }
+
+    #[test]
+    fn test_compute_chain_backward_compat() {
+        // compute_chain(s, c) == compute_chain_with_salt(s, c, 0)
+        let seed = 12345u32;
+        let consumption = 417;
+
+        let entry_legacy = compute_chain(seed, consumption);
+        let entry_salt0 = compute_chain_with_salt(seed, consumption, 0);
+
+        assert_eq!(
+            entry_legacy, entry_salt0,
+            "Legacy compute_chain must equal compute_chain_with_salt with table_id=0"
+        );
+    }
+
+    #[test]
+    fn test_verify_chain_with_salt_different_tables() {
+        let seed = 12345u32;
+        let consumption = 417;
+        let table_id = 3;
+
+        // Get hash at column 5 for table_id=3
+        let mut s = seed;
+        for n in 0..5 {
+            let h = gen_hash_from_seed(s, consumption);
+            s = reduce_hash_with_salt(h, n, table_id);
+        }
+        let target_hash = gen_hash_from_seed(s, consumption);
+
+        // Should find with correct table_id
+        let result = verify_chain_with_salt(seed, 5, target_hash, consumption, table_id);
+        assert_eq!(result, Some(s));
+
+        // Should not find with wrong table_id
+        let wrong_result = verify_chain_with_salt(seed, 5, target_hash, consumption, 0);
+        assert_ne!(wrong_result, Some(s));
+    }
+
+    #[test]
+    fn test_verify_chain_backward_compat() {
+        let seed = 12345u32;
+        let consumption = 417;
+
+        // Get hash at column 0 for table_id=0
+        let hash = gen_hash_from_seed(seed, consumption);
+
+        let result_legacy = verify_chain(seed, 0, hash, consumption);
+        let result_salt0 = verify_chain_with_salt(seed, 0, hash, consumption, 0);
+
+        assert_eq!(
+            result_legacy, result_salt0,
+            "Legacy verify_chain must equal verify_chain_with_salt with table_id=0"
+        );
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_compute_chains_x16_with_salt_matches_single() {
+        let seeds: [u32; 16] = std::array::from_fn(|i| 100 + i as u32);
+        let consumption = 417;
+        let table_id = 5;
+
+        let multi_results = compute_chains_x16_with_salt(seeds, consumption, table_id);
+
+        for (i, seed) in seeds.iter().enumerate() {
+            let single_result = compute_chain_with_salt(*seed, consumption, table_id);
+            assert_eq!(
+                multi_results[i], single_result,
+                "Mismatch at index {} for seed {} table_id {}",
+                i, seed, table_id
+            );
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_compute_chains_x16_backward_compat() {
+        // compute_chains_x16(s, c) == compute_chains_x16_with_salt(s, c, 0)
+        let seeds: [u32; 16] = std::array::from_fn(|i| 12345 + i as u32);
+        let consumption = 417;
+
+        let results_legacy = compute_chains_x16(seeds, consumption);
+        let results_salt0 = compute_chains_x16_with_salt(seeds, consumption, 0);
+
+        assert_eq!(
+            results_legacy, results_salt0,
+            "Legacy compute_chains_x16 must equal compute_chains_x16_with_salt with table_id=0"
+        );
     }
 }

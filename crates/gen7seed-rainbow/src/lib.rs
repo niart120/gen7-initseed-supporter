@@ -22,7 +22,7 @@ pub mod infra;
 pub use constants::*;
 pub use domain::chain::ChainEntry;
 pub use domain::coverage::SeedBitmap;
-pub use domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash};
+pub use domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash, reduce_hash_with_salt};
 pub use domain::sfmt::Sfmt;
 
 // Re-export coverage analysis types

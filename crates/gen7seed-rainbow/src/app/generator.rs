@@ -4,12 +4,12 @@
 //! Supports both sequential and parallel (rayon-based) generation.
 
 use crate::constants::NUM_CHAINS;
-use crate::domain::chain::{ChainEntry, compute_chain};
+use crate::domain::chain::{ChainEntry, compute_chain, compute_chain_with_salt};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[cfg(feature = "multi-sfmt")]
-use crate::domain::chain::compute_chains_x16;
+use crate::domain::chain::{compute_chains_x16, compute_chains_x16_with_salt};
 
 const PROGRESS_INTERVAL: u32 = 10_000;
 
@@ -301,6 +301,204 @@ where
     F: Fn(u32, u32) + Sync,
 {
     generate_table_range_parallel_multi_with_progress(consumption, 0, NUM_CHAINS, on_progress)
+}
+
+// =============================================================================
+// Multi-table generation with salt (table_id)
+// =============================================================================
+
+/// Generate a rainbow table for a specific table_id using 16-parallel SFMT with rayon
+///
+/// This function generates a table with the specified table_id as salt,
+/// creating independent coverage from other tables.
+#[cfg(feature = "multi-sfmt")]
+pub fn generate_table_parallel_multi_with_table_id(
+    consumption: i32,
+    table_id: u32,
+) -> Vec<ChainEntry> {
+    generate_table_range_parallel_multi_with_table_id(consumption, 0, NUM_CHAINS, table_id)
+}
+
+/// Generate a subset of the table with table_id using 16-parallel SFMT with rayon
+#[cfg(feature = "multi-sfmt")]
+pub fn generate_table_range_parallel_multi_with_table_id(
+    consumption: i32,
+    start: u32,
+    end: u32,
+    table_id: u32,
+) -> Vec<ChainEntry> {
+    if start >= end {
+        return Vec::new();
+    }
+
+    let mut result = Vec::with_capacity((end - start) as usize);
+
+    let aligned_start = if start.is_multiple_of(16) {
+        start
+    } else {
+        start + (16 - start % 16)
+    };
+
+    if aligned_start >= end {
+        for seed in start..end {
+            result.push(compute_chain_with_salt(seed, consumption, table_id));
+        }
+        return result;
+    }
+
+    let aligned_end = end - ((end - aligned_start) % 16);
+
+    for seed in start..aligned_start {
+        result.push(compute_chain_with_salt(seed, consumption, table_id));
+    }
+
+    let batches = (aligned_end - aligned_start) / 16;
+    result.par_extend((0..batches).into_par_iter().flat_map_iter(|batch| {
+        let base = aligned_start + batch * 16;
+        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
+        compute_chains_x16_with_salt(seeds, consumption, table_id)
+    }));
+
+    for seed in aligned_end..end {
+        result.push(compute_chain_with_salt(seed, consumption, table_id));
+    }
+
+    result
+}
+
+/// Generate a full rainbow table with table_id using 16-parallel SFMT with rayon and progress
+#[cfg(feature = "multi-sfmt")]
+pub fn generate_table_parallel_multi_with_table_id_and_progress<F>(
+    consumption: i32,
+    table_id: u32,
+    on_progress: F,
+) -> Vec<ChainEntry>
+where
+    F: Fn(u32, u32) + Sync,
+{
+    generate_table_range_parallel_multi_with_table_id_and_progress(
+        consumption,
+        0,
+        NUM_CHAINS,
+        table_id,
+        on_progress,
+    )
+}
+
+/// Generate a subset of the table with table_id using 16-parallel SFMT with rayon and progress
+#[cfg(feature = "multi-sfmt")]
+pub fn generate_table_range_parallel_multi_with_table_id_and_progress<F>(
+    consumption: i32,
+    start: u32,
+    end: u32,
+    table_id: u32,
+    on_progress: F,
+) -> Vec<ChainEntry>
+where
+    F: Fn(u32, u32) + Sync,
+{
+    if start >= end {
+        on_progress(0, 0);
+        return Vec::new();
+    }
+
+    let total = end - start;
+    let progress = AtomicU32::new(0);
+
+    let mut result = Vec::with_capacity((end - start) as usize);
+
+    let aligned_start = if start.is_multiple_of(16) {
+        start
+    } else {
+        start + (16 - start % 16)
+    };
+
+    if aligned_start >= end {
+        for seed in start..end {
+            let entry = compute_chain_with_salt(seed, consumption, table_id);
+            let count_before = progress.fetch_add(1, Ordering::Relaxed);
+            if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+                on_progress(count_before, total);
+            }
+            result.push(entry);
+        }
+
+        on_progress(total, total);
+        return result;
+    }
+
+    let aligned_end = end - ((end - aligned_start) % 16);
+
+    for seed in start..aligned_start {
+        let entry = compute_chain_with_salt(seed, consumption, table_id);
+        let count_before = progress.fetch_add(1, Ordering::Relaxed);
+        if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(count_before, total);
+        }
+        result.push(entry);
+    }
+
+    let batches = (aligned_end - aligned_start) / 16;
+    result.par_extend((0..batches).into_par_iter().flat_map_iter(|batch| {
+        let base = aligned_start + batch * 16;
+        let seeds: [u32; 16] = std::array::from_fn(|i| base + i as u32);
+        let entries = compute_chains_x16_with_salt(seeds, consumption, table_id);
+
+        let count_before = progress.fetch_add(16, Ordering::Relaxed);
+        if count_before % PROGRESS_INTERVAL < 16 {
+            on_progress(count_before, total);
+        }
+
+        entries
+    }));
+
+    for seed in aligned_end..end {
+        let entry = compute_chain_with_salt(seed, consumption, table_id);
+        let count_before = progress.fetch_add(1, Ordering::Relaxed);
+        if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(count_before, total);
+        }
+        result.push(entry);
+    }
+
+    on_progress(total, total);
+    result
+}
+
+/// Generate a rainbow table for a specific table_id with progress (non-multi-sfmt)
+#[cfg(not(feature = "multi-sfmt"))]
+pub fn generate_table_parallel_with_table_id_and_progress<F>(
+    consumption: i32,
+    table_id: u32,
+    on_progress: F,
+) -> Vec<ChainEntry>
+where
+    F: Fn(u32, u32) + Sync,
+{
+    if NUM_CHAINS == 0 {
+        on_progress(0, 0);
+        return Vec::new();
+    }
+
+    let total = NUM_CHAINS;
+    let progress = AtomicU32::new(0);
+
+    let entries: Vec<ChainEntry> = (0..NUM_CHAINS)
+        .into_par_iter()
+        .map(|start_seed| {
+            let entry = compute_chain_with_salt(start_seed, consumption, table_id);
+
+            let count_before = progress.fetch_add(1, Ordering::Relaxed);
+            if count_before.is_multiple_of(PROGRESS_INTERVAL) {
+                on_progress(count_before, total);
+            }
+
+            entry
+        })
+        .collect();
+
+    on_progress(total, total);
+    entries
 }
 
 #[cfg(test)]

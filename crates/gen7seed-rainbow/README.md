@@ -9,36 +9,62 @@
 ### 主な機能
 
 - **SFMT-19937 乱数生成器**: ゲームと完全互換の乱数生成器
-- **レインボーテーブル生成**: オフライン検索用のテーブル生成
-- **初期Seed検索**: 針の値から初期Seedを特定
+- **レインボーテーブル生成**: オフライン検索用のテーブル生成（8枚マルチテーブル構成）
+- **初期Seed検索**: 針の値から初期Seedを特定（推定カバー率99.87%）
+
+## パラメータ
+
+| パラメータ | 値 | 備考 |
+|------------|-----|------|
+| チェーン長 (t) | 4,096 (2^12) | MAX_CHAIN_LENGTH |
+| チェーン数 (m) | 2,097,152 (2^21) | テーブルあたり |
+| テーブル枚数 (T) | 8 | 異なるsaltで独立 |
+| テーブルサイズ | 16 MB × 8 = 128 MB | 総サイズ |
+| 推定カバー率 | 99.87% | 逆比例モデル |
 
 ## 使い方
 
-### 1. テーブル生成
+### 1. テーブル生成（全8枚）
 
 ```bash
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
 ```
 
-### 2. テーブルソート
+単一テーブルのみ生成する場合：
 
 ```bash
-cargo run --release -p gen7seed-cli --bin gen7seed_sort -- 417
+cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --table-id 0
 ```
 
-### 3. 初期Seed検索
+### 2. 初期Seed検索
 
 ```bash
 cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 ```
 
-### 4. 欠落Seed抽出（網羅率評価）
+8枚のテーブルを順次検索し、ヒットした時点で早期リターンします。
+
+### 3. 欠落Seed抽出（網羅率評価）
 
 ```bash
 cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 ```
 
 テーブルで到達できないSeedを抽出し、バイナリファイルに出力します。
+
+## ファイル形式
+
+テーブルファイルは以下の命名規則に従います：
+
+```
+{consumption}_{table_id}.sorted.bin
+
+例:
+417_0.sorted.bin   # テーブル 0 (16 MB)
+417_1.sorted.bin   # テーブル 1 (16 MB)
+...
+417_7.sorted.bin   # テーブル 7 (16 MB)
+```
 
 ## モジュール構成
 
