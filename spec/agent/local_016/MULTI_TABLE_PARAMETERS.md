@@ -41,9 +41,9 @@ m=2^23, t=4096 での初期検証：
 
 | 効果 | 現行 | 改修後 |
 |------|------|--------|
-| カバー率 | ~52%（推定） | 99.87% |
-| テーブル総サイズ | 96 MB | 128 MB |
-| 検索コスト | ~1テーブル | 平均~4テーブル |
+| カバー率 | ~52%（推定） | 要実測 |
+| テーブル総サイズ | 96 MB | 20 MB |
+| 検索コスト | ~1テーブル | 平均~8テーブル |
 
 ---
 
@@ -100,11 +100,17 @@ $$C_{total} = 1 - (1 - C_{single})^T$$
 
 | パラメータ | 値 | 備考 |
 |------------|-----|------|
-| t (MAX_CHAIN_LENGTH) | 4,096 (2^12) | チェーン長 |
-| m (NUM_CHAINS) | 2,097,152 (2^21) | テーブルあたり |
-| T (NUM_TABLES) | 8 | テーブル枚数 |
-| テーブルサイズ | 16 MB × 8 = 128 MB | 総サイズ |
-| 推定カバー率 | 99.87% | 逆比例モデル |
+| t (MAX_CHAIN_LENGTH) | 16,384 (2^14) | チェーン長 |
+| m (NUM_CHAINS) | 163,840 (20×2^13) | テーブルあたり |
+| T (NUM_TABLES) | 16 (2^4) | テーブル枚数 |
+| テーブルサイズ | 1.25 MB × 16 = 20 MB | 総サイズ |
+
+#### パラメータ選定理由
+
+1. **総サイズ 20MB**: 配布・運用上扱いやすいサイズ
+2. **NUM_CHAINS = 20 × (1 << 13)**: 計算根拠が明確（20MB / 8 bytes / 16 tables）
+3. **NUM_TABLES = 16**: テーブル枚数を増やしカバー率を補完
+4. **MAX_CHAIN_LENGTH = 16,384**: 長いチェーンで検索コストを軽減
 
 ### 3.4 不採用案（ADR）
 
@@ -136,14 +142,16 @@ $$C_{total} = 1 - (1 - C_{single})^T$$
 // Rainbow table parameters
 // =============================================================================
 
-/// Maximum chain length (t = 2^12 = 4096)
-pub const MAX_CHAIN_LENGTH: u32 = 4096;
+/// Maximum chain length (t = 2^14 = 16,384)
+pub const MAX_CHAIN_LENGTH: u32 = 1 << 14; // 16,384
 
-/// Number of chains per table (m = 2^21 = 2,097,152)
-pub const NUM_CHAINS: u32 = 2_097_152;
+/// Number of chains per table (m = 163,840)
+///
+/// Calculated for 20MB total: 20 * (1 << 13) * 8 bytes * 16 tables = 20MB
+pub const NUM_CHAINS: u32 = 20 * (1 << 13); // 163,840
 
-/// Number of tables (T = 8)
-pub const NUM_TABLES: u32 = 8;
+/// Number of tables (T = 16)
+pub const NUM_TABLES: u32 = 1 << 4; // 16
 
 /// Seed space size (N = 2^32)
 pub const SEED_SPACE: u64 = 1u64 << 32;
@@ -222,17 +230,17 @@ pub fn reduce_hash(hash: u64, column: u32) -> u32 {
 {consumption}_{table_id}.sorted.bin
 
 例:
-417_0.sorted.bin   # テーブル 0 (16 MB)
-417_1.sorted.bin   # テーブル 1 (16 MB)
+417_0.sorted.bin   # テーブル 0 (1.25 MB)
+417_1.sorted.bin   # テーブル 1 (1.25 MB)
 ...
-417_7.sorted.bin   # テーブル 7 (16 MB)
+417_15.sorted.bin  # テーブル 15 (1.25 MB)
 ```
 
 ### 4.4 検索フロー
 
-1. 全テーブル（0〜7）を順次検索
+1. 全テーブル（0〜15）を順次検索
 2. ヒットした時点で終了（早期リターン）
-3. 平均約4テーブルでヒット（カバー率56%/テーブルの期待値）
+3. 平均約8テーブルでヒット
 
 ### 4.5 後方互換性
 
