@@ -42,12 +42,116 @@ jobs:
       - name: Cargo build (release)
         run: cargo build --release --workspace
 
+      - name: Cargo build (release, AVX2)
+        if: matrix.os == 'windows-latest'
+        env:
+          RUSTFLAGS: "-C target-cpu=haswell"
+          CARGO_TARGET_DIR: target/avx2
+        run: cargo build --release --workspace
+
+      - name: Cargo build (release, AVX512)
+        if: matrix.os == 'windows-latest'
+        env:
+          RUSTFLAGS: "-C target-cpu=skylake-avx512"
+          CARGO_TARGET_DIR: target/avx512
+        run: cargo build --release --workspace
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: gen7seed-${{ matrix.artifact_suffix }}
           path: |
             target/release/gen7seed_create${{ matrix.bin_ext }}
-            target/release/gen7seed_sort${{ matrix.bin_ext }}
             target/release/gen7seed_search${{ matrix.bin_ext }}
           if-no-files-found: error
+
+      - name: Upload binaries (AVX2)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen7seed-windows-avx2
+          path: |
+            target/avx2/release/gen7seed_create${{ matrix.bin_ext }}
+            target/avx2/release/gen7seed_search${{ matrix.bin_ext }}
+          if-no-files-found: error
+
+      - name: Upload binaries (AVX512)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen7seed-windows-avx512
+          path: |
+            target/avx512/release/gen7seed_create${{ matrix.bin_ext }}
+            target/avx512/release/gen7seed_search${{ matrix.bin_ext }}
+          if-no-files-found: error
+
+  generate-tables:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C target-cpu=native"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-10
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Prepare output directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+
+      - name: Generate rainbow table (.g7rt)
+        shell: pwsh
+        run: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --out-dir artifacts
+
+      - name: Generate missing seeds (.g7ms)
+        shell: pwsh
+        run: cargo run --release --example extract_missing_seeds -p gen7seed-rainbow -- artifacts
+
+      - name: Upload tables
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen7seed-tables
+          path: |
+            artifacts/417.g7rt
+            artifacts/417.g7ms
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - generate-tables
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Generate checksums (SHA256)
+        shell: pwsh
+        run: |
+          Set-Location dist
+          Get-ChildItem -File -Recurse | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLower()
+            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1).Replace('\\','/')
+            "$hash  $relative"
+          } | Set-Content -NoNewline -Path SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/**/gen7seed_create*
+            dist/**/gen7seed_search*
+            dist/**/417.g7rt
+            dist/**/417.g7ms
+            dist/SHA256SUMS.txt
