@@ -7,12 +7,22 @@
 // =============================================================================
 
 /// Maximum chain length (t = 2^14 = 16,384)
+#[cfg(not(test))]
 pub const MAX_CHAIN_LENGTH: u32 = 1 << 14; // 16,384
+
+/// Maximum chain length (t = 128) - reduced for faster unit tests
+#[cfg(test)]
+pub const MAX_CHAIN_LENGTH: u32 = 128;
 
 /// Number of chains per table (m = 163,840)
 ///
 /// Calculated for 20MB total: 20 * (1 << 13) * 8 bytes * 16 tables = 20MB
+#[cfg(not(test))]
 pub const NUM_CHAINS: u32 = 20 * (1 << 13); // 163,840
+
+/// Number of chains per table (m = 1,280) - reduced for faster unit tests
+#[cfg(test)]
+pub const NUM_CHAINS: u32 = 1280;
 
 /// Number of tables (T = 16)
 pub const NUM_TABLES: u32 = 1 << 4; // 16
