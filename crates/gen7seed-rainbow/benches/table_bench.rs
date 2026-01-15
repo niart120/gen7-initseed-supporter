@@ -1,7 +1,7 @@
 //! テーブル検索ベンチマーク
 //!
 //! 完全版テーブルを使用した検索性能の計測。
-//! `target/release/417.sorted.bin` が存在する場合のみ実行される。
+//! `target/release/417.g7rt` が存在する場合のみ実行される。
 //!
 //! ## 実行方法
 //!
@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use gen7seed_rainbow::domain::chain::ChainEntry;
-use gen7seed_rainbow::infra::table_io::load_table;
+use gen7seed_rainbow::infra::table_io::load_single_table;
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
-use gen7seed_rainbow::{GenerateOptions, Sfmt, generate_table, search_seeds};
+use gen7seed_rainbow::{GenerateOptions, Sfmt, ValidationOptions, generate_table, search_seeds};
 
 const CONSUMPTION: i32 = 417;
 const MINI_TABLE_SIZE: u32 = 1_000;
@@ -46,7 +46,7 @@ fn get_full_table_path() -> Option<PathBuf> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent() // crates/
         .and_then(|p| p.parent()) // project root
-        .map(|p| p.join("target/release/417.sorted.bin"))?;
+        .map(|p| p.join("target/release/417.g7rt"))?;
 
     if path.exists() { Some(path) } else { None }
 }
@@ -60,7 +60,9 @@ fn get_full_table() -> Option<&'static Vec<ChainEntry>> {
             get_full_table_path().and_then(|path| {
                 eprintln!("[table_bench] Loading full table from {:?}...", path);
                 let start = Instant::now();
-                let table = load_table(&path).ok()?;
+                let options = ValidationOptions::for_search(CONSUMPTION);
+                let (_header, tables) = load_single_table(&path, &options).ok()?;
+                let table = tables.into_iter().next()?;
                 eprintln!(
                     "[table_bench] Loaded {} entries in {:.2}s",
                     table.len(),

@@ -5,4 +5,6 @@
 pub mod chain;
 pub mod coverage;
 pub mod hash;
+pub mod missing_format;
 pub mod sfmt;
+pub mod table_format;

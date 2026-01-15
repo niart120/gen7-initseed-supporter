@@ -9,7 +9,7 @@
 ### 主な機能
 
 - **SFMT-19937 乱数生成器**: ゲームと完全互換の乱数生成器
-- **レインボーテーブル生成**: オフライン検索用のテーブル生成（8枚マルチテーブル構成）
+- **レインボーテーブル生成**: オフライン検索用のテーブル生成（単一ファイルに全テーブルを格納）
 - **初期Seed検索**: 針の値から初期Seedを特定（推定カバー率99.87%）
 
 ## パラメータ
@@ -24,16 +24,10 @@
 
 ## 使い方
 
-### 1. テーブル生成（全8枚）
+### 1. テーブル生成（単一ファイル）
 
 ```powershell
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
-```
-
-単一テーブルのみ生成する場合：
-
-```powershell
-cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --table-id 0
 ```
 
 出力ディレクトリを指定する場合（例: .\tables）：
@@ -54,11 +48,11 @@ cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417 --table-dir .\tables
 ```
 
-8枚のテーブルを順次検索し、ヒットした時点で早期リターンします。
+シングルファイルに含まれる全テーブルを順次検索し、ヒットした時点で早期リターンします。
 
 ### 3. 欠落Seed抽出（網羅率評価）
 
-```bash
+```powershell
 cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 ```
 
@@ -69,13 +63,19 @@ cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 テーブルファイルは以下の命名規則に従います：
 
 ```
-{consumption}_{table_id}.sorted.bin
+{consumption}.g7rt
 
 例:
-417_0.sorted.bin   # テーブル 0 (16 MB)
-417_1.sorted.bin   # テーブル 1 (16 MB)
-...
-417_7.sorted.bin   # テーブル 7 (16 MB)
+417.g7rt   # テーブル一式
+```
+
+欠落Seedファイル:
+
+```
+{consumption}.g7ms
+
+例:
+417.g7ms
 ```
 
 出力先ディレクトリは以下の優先度で決定されます：

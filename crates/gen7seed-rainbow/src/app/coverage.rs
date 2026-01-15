@@ -5,6 +5,8 @@
 
 use crate::domain::chain::ChainEntry;
 use crate::domain::coverage::SeedBitmap;
+use crate::domain::missing_format::MissingSeedsHeader;
+use crate::domain::table_format::TableHeader;
 use rayon::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -237,6 +239,20 @@ where
     }
 }
 
+/// Extract missing seeds and build a header from the source table metadata.
+pub fn extract_missing_seeds_with_header<F>(
+    table: &[ChainEntry],
+    source_header: &TableHeader,
+    options: BitmapOptions<F>,
+) -> (MissingSeedsHeader, MissingSeedsResult)
+where
+    F: Fn(u32, u32) + Sync,
+{
+    let result = extract_missing_seeds(table, source_header.consumption, options);
+    let header = MissingSeedsHeader::new(source_header, result.missing_count);
+    (header, result)
+}
+
 /// Extract missing seeds from multiple tables
 ///
 /// Builds a combined bitmap from all tables and extracts seeds not reachable
@@ -265,6 +281,21 @@ where
         coverage,
         missing_seeds,
     }
+}
+
+/// Extract missing seeds from multiple tables and build a header from source metadata.
+#[cfg(feature = "multi-sfmt")]
+pub fn extract_missing_seeds_multi_table_with_header<F>(
+    tables: &[(Vec<ChainEntry>, u32)],
+    source_header: &TableHeader,
+    on_progress: F,
+) -> (MissingSeedsHeader, MissingSeedsResult)
+where
+    F: Fn(&str, u32, u32, u32) + Sync,
+{
+    let result = extract_missing_seeds_multi_table(tables, source_header.consumption, on_progress);
+    let header = MissingSeedsHeader::new(source_header, result.missing_count);
+    (header, result)
 }
 
 #[cfg(test)]

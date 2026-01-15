@@ -17,7 +17,7 @@
 //! Directory: target/release
 //! Tables: 8
 //!
-//! Loading tables...
+//! Loading table file...
 //!   Table 0: 2,097,152 entries
 //!   Table 1: 2,097,152 entries
 //!   ...
@@ -36,7 +36,7 @@
 //!   Reachable: 4,289,456,789 (99.87%)
 //!   Missing:   5,510,507 (0.13%)
 //!
-//! Saving to consumption_417_missing.bin...
+//! Saving to 417.g7ms...
 //!   File size: 22.04 MB
 //!
 //! Done in 345.67s
@@ -47,10 +47,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
-use gen7seed_rainbow::app::coverage::extract_missing_seeds_multi_table;
-use gen7seed_rainbow::constants::NUM_TABLES;
+use gen7seed_rainbow::ValidationOptions;
+use gen7seed_rainbow::app::coverage::extract_missing_seeds_multi_table_with_header;
 use gen7seed_rainbow::infra::missing_seeds_io::{get_missing_seeds_path, save_missing_seeds};
-use gen7seed_rainbow::infra::table_io::load_table;
+use gen7seed_rainbow::infra::table_io::{get_single_table_path, load_single_table};
 
 const CONSUMPTION: i32 = 417;
 
@@ -66,38 +66,43 @@ fn main() {
 
     let start = Instant::now();
 
-    // Load all tables
-    println!("Loading tables...");
+    // Load table file
+    println!("Loading table file...");
     let load_start = Instant::now();
-    let mut tables: Vec<(Vec<_>, u32)> = Vec::with_capacity(NUM_TABLES as usize);
-    let mut total_entries = 0u64;
-
-    for table_id in 0..NUM_TABLES {
-        let table_path = get_table_path(table_id);
-        match load_table(&table_path) {
-            Ok(table) => {
-                println!(
-                    "  Table {}: {} entries",
-                    table_id,
-                    format_number(table.len() as u64)
-                );
-                total_entries += table.len() as u64;
-                tables.push((table, table_id));
-            }
-            Err(e) => {
-                eprintln!("Error: Failed to load table {}: {}", table_id, e);
-                eprintln!(
-                    "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- {} --table-id {}",
-                    CONSUMPTION, table_id
-                );
-                std::process::exit(1);
-            }
+    let base_dir = get_table_dir();
+    let table_path = get_single_table_path(&base_dir, CONSUMPTION);
+    let options = ValidationOptions::for_search(CONSUMPTION);
+    let (header, tables) = match load_single_table(&table_path, &options) {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!(
+                "Error: Failed to load table file {}: {}",
+                table_path.display(),
+                e
+            );
+            eprintln!(
+                "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- {}",
+                CONSUMPTION
+            );
+            std::process::exit(1);
         }
+    };
+
+    let mut tables_with_ids = Vec::with_capacity(tables.len());
+    let mut total_entries = 0u64;
+    for (table_id, table) in tables.into_iter().enumerate() {
+        println!(
+            "  Table {}: {} entries",
+            table_id,
+            format_number(table.len() as u64)
+        );
+        total_entries += table.len() as u64;
+        tables_with_ids.push((table, table_id as u32));
     }
 
     println!(
         "Loaded {} tables ({} total entries) in {:.2}s\n",
-        tables.len(),
+        tables_with_ids.len(),
         format_number(total_entries),
         load_start.elapsed().as_secs_f64()
     );
@@ -108,9 +113,9 @@ fn main() {
     let last_progress = AtomicU32::new(0);
     let current_table = AtomicU32::new(u32::MAX);
 
-    let result = extract_missing_seeds_multi_table(
-        &tables,
-        CONSUMPTION,
+    let (_missing_header, result) = extract_missing_seeds_multi_table_with_header(
+        &tables_with_ids,
+        &header,
         |phase, table_id, current, total| {
             if phase == "Building bitmap" {
                 let prev_table = current_table.swap(table_id, Ordering::Relaxed);
@@ -164,9 +169,9 @@ fn main() {
     println!();
 
     // Save missing seeds
-    let output_path = get_missing_seeds_path(CONSUMPTION);
-    println!("Saving to {}...", output_path);
-    match save_missing_seeds(&output_path, &result.missing_seeds) {
+    let output_path = get_missing_seeds_path(&base_dir, CONSUMPTION);
+    println!("Saving to {}...", output_path.display());
+    match save_missing_seeds(&output_path, &header, &result.missing_seeds) {
         Ok(()) => {
             let file_size = result.missing_seeds.len() * 4;
             println!("  File size: {}", format_bytes(file_size as u64));
@@ -180,15 +185,11 @@ fn main() {
     println!("\nDone in {:.2}s", start.elapsed().as_secs_f64());
 }
 
-fn get_table_path(table_id: u32) -> PathBuf {
-    // Check command line argument for directory override
-    let base_dir = std::env::args()
+fn get_table_dir() -> PathBuf {
+    std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target/release"));
-
-    // Format: {consumption}_{table_id}.sorted.bin
-    base_dir.join(format!("{}_{}.sorted.bin", CONSUMPTION, table_id))
+        .unwrap_or_else(|| PathBuf::from("target/release"))
 }
 
 fn format_number(n: u64) -> String {
