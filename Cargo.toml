@@ -16,5 +16,6 @@ codegen-units = 1
 tag-name = "v{{version}}"
 sign-tag = false
 sign-commit = false
+publish = false
 push = true
 
