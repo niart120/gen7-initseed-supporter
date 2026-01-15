@@ -55,6 +55,13 @@ use gen7seed_rainbow::infra::table_io::load_table;
 const CONSUMPTION: i32 = 417;
 
 fn main() {
+    // Increase rayon thread pool stack size to avoid stack overflow
+    // MultipleSfmt uses ~40KB on stack, which can overflow with deep call stacks
+    rayon::ThreadPoolBuilder::new()
+        .stack_size(8 * 1024 * 1024) // 8MB per thread
+        .build_global()
+        .expect("Failed to initialize rayon thread pool");
+
     println!("[Missing Seeds Extraction - Multi-Table]");
 
     let start = Instant::now();

@@ -6,7 +6,7 @@
 //! ## 実行方法
 //!
 //! ```powershell
-//! # 8枚のテーブルが必要（417_0.sorted.bin - 417_7.sorted.bin）
+//! # T枚のテーブルが必要（417_0.sorted.bin - 417_{T-1}.sorted.bin）
 //! cargo run --example detection_rate -p gen7seed-rainbow --release
 //! ```
 //!
@@ -14,26 +14,26 @@
 //!
 //! ```text
 //! [Detection Rate Evaluation]
-//! Tables: 8 loaded
+//! Tables: T loaded
 //! Entries per table: 2,097,152
-//! Sample count: 200
+//! Sample count: 20
 //!
-//! Detection rate: 198/200 (99.0%)
-//! Total time: 45.67s
-//! Average time per query: 456.7ms
+//! Detection rate: 19/20 (95.0%)
+//! Total time: 4.57s
+//! Average time per query: 228.5ms
 //! ```
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
+use gen7seed_rainbow::constants::NUM_TABLES;
 use gen7seed_rainbow::infra::table_io::load_table;
 use gen7seed_rainbow::search_seeds;
 use rand::Rng;
 
 const CONSUMPTION: i32 = 417;
-const SAMPLE_COUNT: usize = 200;
-const TABLE_COUNT: u8 = 8;
+const SAMPLE_COUNT: usize = 20;
 
 fn main() {
     // Get table directory
@@ -43,10 +43,10 @@ fn main() {
     println!("Directory: {}", table_dir.display());
 
     // Load all tables
-    println!("Loading {} tables...", TABLE_COUNT);
+    println!("Loading {} tables...", NUM_TABLES);
     let start = Instant::now();
     let mut tables = Vec::new();
-    for table_id in 0..TABLE_COUNT {
+    for table_id in 0..NUM_TABLES {
         let path = table_dir.join(format!("{}_{}.sorted.bin", CONSUMPTION, table_id));
         match load_table(&path) {
             Ok(t) => tables.push(t),
