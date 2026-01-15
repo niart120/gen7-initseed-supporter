@@ -24,8 +24,12 @@ GitHub Releases から実行ファイルを取得し、任意のフォルダに�
 ./gen7seed_create.exe 417
 ```
 
+オプション:
+- `--out-dir <PATH>`: 出力ディレクトリ指定（既定: カレントディレクトリ）
+
 ### 3. 初期Seed検索
-入力された針のパターンに基づき、初期Seedを検索します。
+生成した `{consumption}.g7rt` を読み込み、針のパターンから初期Seedを検索します。
+起動後に 8本の針の値（0〜16）をスペース区切りで入力してください（終了は `q`）。
 
 ```powershell
 ./gen7seed_search.exe 417
