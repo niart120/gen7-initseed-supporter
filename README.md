@@ -8,77 +8,31 @@
 [fujidig/sfmt-rainbow](https://github.com/fujidig/sfmt-rainbow) のRust移植版です。
 
 ## 必要要件
-- Rust (2024 edition / nightly-2026-01-10)
-- デフォルトでSIMD版SFMTを使用します（feature `simd`）。SIMD非対応環境や互換確認が必要な場合は `--no-default-features` を付けてビルド/テストしてください。
+- リリース版の実行ファイル（Windows / macOS / Linux）
 
 ## 使い方 (Usage Guide)
 
-本ツールは以下の手順で使用します。各コマンドの引数 `417` は、計算に用いる針の開始位置（消費数）を表します。
+各コマンドの引数 `417` は、計算に用いる針の開始位置（消費数）を表します。
 
-### 1. ビルド
-```powershell
-cargo build --release
-```
+### 1. ダウンロード
+GitHub Releases から実行ファイルを取得し、任意のフォルダに展開してください。
 
-### 2. テーブル生成+ソート (Creation & Sorting)
-レインボーテーブルを生成し、自動的にソートします。初回のみ実行が必要です。出力は `{consumption}.g7rt` の単一ファイルです。
-※時間がかかる場合があります。
+### 2. テーブル生成+ソート
+レインボーテーブルを生成し、自動的にソートします。出力は `{consumption}.g7rt` の単一ファイルです。
 
 ```powershell
-cargo run --release --bin gen7seed_create -- 417
+./gen7seed_create.exe 417
 ```
 
-オプション:
-- `--no-sort`: ソートをスキップし、未ソートテーブルのみ生成
-- `--out-dir <PATH>`: 出力ディレクトリ指定
-- `--help`: ヘルプを表示
-
-### 3. 初期Seed検索 (Search)
+### 3. 初期Seed検索
 入力された針のパターンに基づき、初期Seedを検索します。
 
 ```powershell
-cargo run --release --bin gen7seed_search -- 417
+./gen7seed_search.exe 417
 ```
 
-## 開発者向け情報 (Development)
-
-### コード整形
-```powershell
-cargo fmt
-```
-
-### 静的解析 (Clippy)
-```powershell
-cargo clippy --all-targets --all-features
-```
-
-### テスト実行
-```powershell
-# ユニットテストのみ（高速）
-cargo test --lib
-
-# 統合テストのみ（release buildで最適化）
-cargo test --test '*' --release
-
-# 全テスト（CI相当）
-cargo test --lib; cargo test --test '*' --release
-```
-
-### ベンチマーク
-Criterionを使用したベンチマークが実行可能です。
-```powershell
-# コア処理ベンチマーク
-cargo bench --bench rainbow_bench
-
-# テーブル検索ベンチマーク（完全版テーブルが必要）
-cargo bench --bench table_bench
-```
-
-### 精度評価
-検出率・検索速度の計測スクリプトを実行できます。
-```powershell
-cargo run --example detection_rate -p gen7seed-rainbow --release
-```
+## 開発者向け情報
+開発・テスト・リリース手順は [CONTRIBUTING.md](CONTRIBUTING.md) にまとめています。
 
 ### 設計・仕様
 詳細な設計ドキュメントは [spec/](spec/) ディレクトリに格納されています。

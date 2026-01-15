@@ -12,3 +12,9 @@ inherits = "release"
 lto = true
 codegen-units = 1
 
+[workspace.metadata.release]
+tag-name = "v{{version}}"
+sign-tag = false
+sign-commit = false
+push = true
+
