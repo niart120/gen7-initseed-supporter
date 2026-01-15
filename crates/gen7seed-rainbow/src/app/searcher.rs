@@ -6,6 +6,9 @@
 use crate::constants::MAX_CHAIN_LENGTH;
 use crate::domain::chain::{ChainEntry, verify_chain};
 use crate::domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash_with_salt};
+use crate::domain::table_format::{
+    TableFormatError, TableHeader, ValidationOptions, validate_header,
+};
 use rayon::prelude::*;
 use std::collections::HashSet;
 
@@ -36,6 +39,24 @@ pub fn search_seeds(
         .collect();
 
     results.into_iter().collect()
+}
+
+/// Search for initial seeds with table metadata validation
+pub fn search_seeds_with_validation(
+    needle_values: [u64; 8],
+    expected_consumption: i32,
+    header: &TableHeader,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Result<Vec<u32>, TableFormatError> {
+    let options = ValidationOptions::for_search(expected_consumption);
+    validate_header(header, &options)?;
+    Ok(search_seeds(
+        needle_values,
+        expected_consumption,
+        table,
+        table_id,
+    ))
 }
 
 /// Search at a single column position

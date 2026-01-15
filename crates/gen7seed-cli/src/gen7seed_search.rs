@@ -8,42 +8,59 @@
 //!   gen7seed_search 417 --table-dir .\tables
 //!   Enter needle values (8 values, 0-16, space-separated): 5 12 3 8 14 1 9 6
 //!
-//! This tool searches across all 8 tables sequentially, stopping when a match is found.
+//! This tool searches across all tables sequentially, stopping when a match is found.
 
-use gen7seed_rainbow::constants::{NEEDLE_COUNT, NUM_TABLES, SUPPORTED_CONSUMPTIONS};
-use gen7seed_rainbow::infra::table_io::get_sorted_table_path_in_dir;
+use gen7seed_rainbow::ValidationOptions;
+use gen7seed_rainbow::constants::{NEEDLE_COUNT, SUPPORTED_CONSUMPTIONS};
+use gen7seed_rainbow::domain::table_format::TableFormatError;
+use gen7seed_rainbow::infra::table_io::get_single_table_path;
 use gen7seed_rainbow::search_seeds;
 use std::env;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 #[cfg(feature = "mmap")]
-use gen7seed_rainbow::MappedTable;
+use gen7seed_rainbow::MappedSingleTable;
 
 #[cfg(not(feature = "mmap"))]
-use gen7seed_rainbow::infra::table_io::load_table;
+use gen7seed_rainbow::infra::table_io::load_single_table;
 
-/// Loaded table data
-#[cfg(feature = "mmap")]
-struct TableSet {
-    tables: Vec<Option<MappedTable>>,
-}
-
-#[cfg(not(feature = "mmap"))]
-struct TableSet {
-    tables: Vec<Option<Vec<gen7seed_rainbow::ChainEntry>>>,
-}
-
-impl TableSet {
-    fn new() -> Self {
-        Self {
-            tables: (0..NUM_TABLES).map(|_| None).collect(),
+fn format_table_error(path: &Path, err: TableFormatError) -> String {
+    match err {
+        TableFormatError::InvalidMagic => format!(
+            "Invalid file: '{}' is not a valid rainbow table file.\nIf you have tables in the old format, please regenerate them.",
+            path.display()
+        ),
+        TableFormatError::UnsupportedVersion(version) => format!(
+            "Unsupported format version: {}.\nPlease regenerate the table file.",
+            version
+        ),
+        TableFormatError::ConsumptionMismatch { expected, found } => format!(
+            "Consumption mismatch: requested {}, but table was generated for {}.\nPlease use the correct table file or regenerate with consumption={}.",
+            expected, found, expected
+        ),
+        TableFormatError::ChainLengthMismatch { expected, found } => format!(
+            "Incompatible table: chain length mismatch (expected {}, found {}).\nPlease regenerate the table.",
+            expected, found
+        ),
+        TableFormatError::ChainCountMismatch { expected, found } => format!(
+            "Incompatible table: chain count mismatch (expected {}, found {}).\nPlease regenerate the table.",
+            expected, found
+        ),
+        TableFormatError::TableCountMismatch { expected, found } => format!(
+            "Incompatible table: table count mismatch (expected {}, found {}).\nPlease regenerate the table.",
+            expected, found
+        ),
+        TableFormatError::TableNotSorted => {
+            "Table is not sorted. Search requires a sorted table.\nPlease regenerate the table (sorting is done automatically)."
+                .to_string()
         }
-    }
-
-    fn loaded_count(&self) -> usize {
-        self.tables.iter().filter(|t| t.is_some()).count()
+        TableFormatError::InvalidFileSize { expected, found } => format!(
+            "Invalid file size: expected {} bytes, found {} bytes.",
+            expected, found
+        ),
+        TableFormatError::Io(msg) => format!("I/O error: {}", msg),
     }
 }
 
@@ -94,66 +111,44 @@ fn main() {
     };
 
     let resolved_dir = table_dir.unwrap_or_else(|| PathBuf::from("."));
+    let table_path = get_single_table_path(&resolved_dir, consumption);
 
-    println!(
-        "Loading {} tables for consumption {}...",
-        NUM_TABLES, consumption
-    );
-    println!("Table directory: {}", resolved_dir.display());
+    println!("Loading table for consumption {}...", consumption);
+    println!("Table file: {}", table_path.display());
     let start_load = Instant::now();
 
-    let mut table_set = TableSet::new();
+    let options = ValidationOptions::for_search(consumption);
 
-    for table_id in 0..NUM_TABLES {
-        let table_path = get_sorted_table_path_in_dir(&resolved_dir, consumption, table_id);
-
-        #[cfg(feature = "mmap")]
-        {
-            match MappedTable::open(&table_path) {
-                Ok(t) => {
-                    table_set.tables[table_id as usize] = Some(t);
-                }
-                Err(_) => {
-                    // Table not found, skip
-                }
-            }
+    #[cfg(feature = "mmap")]
+    let table = match MappedSingleTable::open(&table_path, &options) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {}", format_table_error(&table_path, e));
+            std::process::exit(1);
         }
+    };
 
-        #[cfg(not(feature = "mmap"))]
-        {
-            match load_table(&table_path) {
-                Ok(t) => {
-                    table_set.tables[table_id as usize] = Some(t);
-                }
-                Err(_) => {
-                    // Table not found, skip
-                }
-            }
+    #[cfg(not(feature = "mmap"))]
+    let (header, tables) = match load_single_table(&table_path, &options) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {}", format_table_error(&table_path, e));
+            std::process::exit(1);
         }
-    }
+    };
 
     let load_time = start_load.elapsed();
-    let loaded_count = table_set.loaded_count();
 
-    if loaded_count == 0 {
-        eprintln!("Error: No tables found for consumption {}.", consumption);
-        eprintln!("Make sure to run gen7seed_create {} first.", consumption);
-        std::process::exit(1);
-    }
+    #[cfg(feature = "mmap")]
+    let table_count = table.num_tables();
+    #[cfg(not(feature = "mmap"))]
+    let table_count = header.num_tables;
 
     println!(
-        "Loaded {}/{} tables in {:.3} seconds",
-        loaded_count,
-        NUM_TABLES,
+        "Loaded {} tables in {:.3} seconds",
+        table_count,
         load_time.as_secs_f64()
     );
-
-    if loaded_count < NUM_TABLES as usize {
-        println!(
-            "Warning: Only {}/{} tables are available. Coverage may be reduced.",
-            loaded_count, NUM_TABLES
-        );
-    }
 
     loop {
         print!(
@@ -207,27 +202,25 @@ fn main() {
 
         let needle_values: [u64; NEEDLE_COUNT] = values.try_into().unwrap();
 
-        println!("Searching across {} tables...", loaded_count);
+        println!("Searching across {} tables...", table_count);
         let start = Instant::now();
 
         let mut all_results = Vec::new();
         let mut tables_searched = 0;
 
-        // Search each table sequentially, stopping early if found
-        for table_id in 0..NUM_TABLES {
-            if let Some(ref table) = table_set.tables[table_id as usize] {
+        for table_id in 0..table_count {
+            #[cfg(feature = "mmap")]
+            let table_view = table.table(table_id);
+            #[cfg(not(feature = "mmap"))]
+            let table_view = tables.get(table_id as usize).map(|t| t.as_slice());
+
+            if let Some(view) = table_view {
                 tables_searched += 1;
-
-                #[cfg(feature = "mmap")]
-                let results = search_seeds(needle_values, consumption, table.as_slice(), table_id);
-
-                #[cfg(not(feature = "mmap"))]
-                let results = search_seeds(needle_values, consumption, table, table_id);
+                let results = search_seeds(needle_values, consumption, view, table_id);
 
                 if !results.is_empty() {
                     println!("  Found in table {}!", table_id);
                     all_results.extend(results);
-                    // Early exit on first match (common case)
                     break;
                 }
             }
@@ -243,7 +236,6 @@ fn main() {
             println!("  - The seed is not covered by the loaded tables");
             println!("Try measuring the needle values again.");
         } else {
-            // Deduplicate results (in case of overlap)
             all_results.sort();
             all_results.dedup();
 

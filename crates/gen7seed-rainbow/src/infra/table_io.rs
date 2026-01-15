@@ -2,17 +2,20 @@
 //!
 //! This module provides functions for reading and writing rainbow table files.
 
-use crate::constants::CHAIN_ENTRY_SIZE;
+use crate::constants::{CHAIN_ENTRY_SIZE, FILE_HEADER_SIZE, TABLE_FILE_EXTENSION};
 use crate::domain::chain::ChainEntry;
+use crate::domain::table_format::{
+    TableFormatError, TableHeader, ValidationOptions, expected_file_size, validate_header,
+};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
-fn ensure_parent_dir(path: &Path) -> io::Result<()> {
+fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -22,377 +25,267 @@ fn ensure_parent_dir(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Load table from file
-pub fn load_table(path: impl AsRef<Path>) -> io::Result<Vec<ChainEntry>> {
-    let file = File::open(path)?;
+/// Get the file path for a single-file rainbow table
+///
+/// Format: `{dir}/{consumption}.g7rt`
+pub fn get_single_table_path(dir: impl AsRef<Path>, consumption: i32) -> PathBuf {
+    dir.as_ref()
+        .join(format!("{}.{}", consumption, TABLE_FILE_EXTENSION))
+}
+
+/// Load a single-file rainbow table with validation
+///
+/// Returns the header and a vector of tables (each table is a Vec<ChainEntry>).
+pub fn load_single_table(
+    path: impl AsRef<Path>,
+    options: &ValidationOptions,
+) -> Result<(TableHeader, Vec<Vec<ChainEntry>>), TableFormatError> {
+    let file = File::open(path.as_ref())?;
     let metadata = file.metadata()?;
-    let num_entries = metadata.len() as usize / CHAIN_ENTRY_SIZE;
 
     let mut reader = BufReader::new(file);
-    let mut entries = Vec::with_capacity(num_entries);
+    let mut header_buf = [0u8; FILE_HEADER_SIZE];
+    reader.read_exact(&mut header_buf)?;
 
-    for _ in 0..num_entries {
-        let start_seed = reader.read_u32::<LittleEndian>()?;
-        let end_seed = reader.read_u32::<LittleEndian>()?;
-        entries.push(ChainEntry {
-            start_seed,
-            end_seed,
+    let header = TableHeader::from_bytes(&header_buf)?;
+    validate_header(&header, options)?;
+
+    let expected_size = expected_file_size(&header);
+    if metadata.len() != expected_size {
+        return Err(TableFormatError::InvalidFileSize {
+            expected: expected_size,
+            found: metadata.len(),
         });
     }
 
-    Ok(entries)
+    let mut tables = Vec::with_capacity(header.num_tables as usize);
+    for _ in 0..header.num_tables {
+        let mut entries = Vec::with_capacity(header.chains_per_table as usize);
+        for _ in 0..header.chains_per_table {
+            let start_seed = reader.read_u32::<LittleEndian>()?;
+            let end_seed = reader.read_u32::<LittleEndian>()?;
+            entries.push(ChainEntry {
+                start_seed,
+                end_seed,
+            });
+        }
+        tables.push(entries);
+    }
+
+    Ok((header, tables))
 }
 
-/// Save table to file
-pub fn save_table(path: impl AsRef<Path>, entries: &[ChainEntry]) -> io::Result<()> {
+/// Save tables to a single file with header
+///
+/// # Arguments
+/// * `path` - Output file path
+/// * `consumption` - RNG consumption value
+/// * `tables` - Vector of tables (each table is a slice of ChainEntry)
+/// * `sorted` - Whether the tables are sorted
+pub fn save_single_table(
+    path: impl AsRef<Path>,
+    consumption: i32,
+    tables: &[Vec<ChainEntry>],
+    sorted: bool,
+) -> Result<(), TableFormatError> {
     ensure_parent_dir(path.as_ref())?;
+
+    let header = TableHeader::new(consumption, sorted);
+
+    if tables.len() != header.num_tables as usize {
+        return Err(TableFormatError::TableCountMismatch {
+            expected: header.num_tables,
+            found: tables.len() as u32,
+        });
+    }
+    for table in tables {
+        if table.len() != header.chains_per_table as usize {
+            return Err(TableFormatError::ChainCountMismatch {
+                expected: header.chains_per_table,
+                found: table.len() as u32,
+            });
+        }
+    }
 
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
 
-    for entry in entries {
-        writer.write_u32::<LittleEndian>(entry.start_seed)?;
-        writer.write_u32::<LittleEndian>(entry.end_seed)?;
+    writer.write_all(&header.to_bytes())?;
+
+    for table in tables {
+        for entry in table {
+            writer.write_u32::<LittleEndian>(entry.start_seed)?;
+            writer.write_u32::<LittleEndian>(entry.end_seed)?;
+        }
     }
 
-    writer.flush()
-}
-
-/// Get the expected file path for a consumption value (unsorted)
-///
-/// Note: This is equivalent to `get_table_path_with_table_id(consumption, 0)`.
-pub fn get_table_path(consumption: i32) -> PathBuf {
-    get_table_path_with_table_id(consumption, 0)
-}
-
-/// Get the expected file path for a sorted consumption table
-///
-/// Note: This is equivalent to `get_sorted_table_path_with_table_id(consumption, 0)`.
-pub fn get_sorted_table_path(consumption: i32) -> PathBuf {
-    get_sorted_table_path_with_table_id(consumption, 0)
-}
-
-/// Get the expected file path for a consumption value with table_id (unsorted)
-///
-/// Format: `{consumption}_{table_id}.bin`
-pub fn get_table_path_with_table_id(consumption: i32, table_id: u32) -> PathBuf {
-    PathBuf::from(format!("{}_{}.bin", consumption, table_id))
-}
-
-/// Get the expected file path for a sorted consumption table with table_id
-///
-/// Format: `{consumption}_{table_id}.sorted.bin`
-pub fn get_sorted_table_path_with_table_id(consumption: i32, table_id: u32) -> PathBuf {
-    PathBuf::from(format!("{}_{}.sorted.bin", consumption, table_id))
-}
-
-/// Get the expected file path for a consumption value within a custom directory (unsorted)
-///
-/// Format: `{dir}/{consumption}_{table_id}.bin`
-pub fn get_table_path_in_dir(dir: impl AsRef<Path>, consumption: i32, table_id: u32) -> PathBuf {
-    dir.as_ref()
-        .join(format!("{}_{}.bin", consumption, table_id))
-}
-
-/// Get the expected file path for a sorted consumption table within a custom directory
-///
-/// Format: `{dir}/{consumption}_{table_id}.sorted.bin`
-pub fn get_sorted_table_path_in_dir(
-    dir: impl AsRef<Path>,
-    consumption: i32,
-    table_id: u32,
-) -> PathBuf {
-    dir.as_ref()
-        .join(format!("{}_{}.sorted.bin", consumption, table_id))
+    writer.flush()?;
+    Ok(())
 }
 
 // =============================================================================
-// Memory-mapped table I/O (mmap feature)
+// Memory-mapped single-file table (mmap feature)
 // =============================================================================
 
-/// Memory-mapped rainbow table
-///
-/// This structure provides efficient read-only access to rainbow table files
-/// using memory-mapped I/O. It avoids loading the entire file into memory
-/// and allows the OS to manage paging automatically.
-///
-/// # Safety
-///
-/// The `as_slice()` method is only safe on little-endian platforms where
-/// the file format matches the native representation of `ChainEntry`.
 #[cfg(feature = "mmap")]
-pub struct MappedTable {
+/// Memory-mapped single-file rainbow table
+pub struct MappedSingleTable {
+    header: TableHeader,
     mmap: Mmap,
-    len: usize,
 }
 
 #[cfg(feature = "mmap")]
-impl MappedTable {
-    /// Open a table file as memory-mapped
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be opened or mapped.
-    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = File::open(path)?;
+impl MappedSingleTable {
+    /// Open a single-file table as memory-mapped
+    pub fn open(
+        path: impl AsRef<Path>,
+        options: &ValidationOptions,
+    ) -> Result<Self, TableFormatError> {
+        let file = File::open(path.as_ref())?;
         let metadata = file.metadata()?;
-        let len = metadata.len() as usize / CHAIN_ENTRY_SIZE;
+
+        let mut header_buf = [0u8; FILE_HEADER_SIZE];
+        {
+            let mut reader = BufReader::new(&file);
+            reader.read_exact(&mut header_buf)?;
+        }
+
+        let header = TableHeader::from_bytes(&header_buf)?;
+        validate_header(&header, options)?;
+
+        let expected_size = expected_file_size(&header);
+        if metadata.len() != expected_size {
+            return Err(TableFormatError::InvalidFileSize {
+                expected: expected_size,
+                found: metadata.len(),
+            });
+        }
 
         let mmap = unsafe { Mmap::map(&file)? };
 
-        Ok(Self { mmap, len })
+        Ok(Self { header, mmap })
     }
 
-    /// Get the number of entries
-    pub fn len(&self) -> usize {
-        self.len
+    /// Get the header
+    pub fn header(&self) -> &TableHeader {
+        &self.header
     }
 
-    /// Check if empty
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    /// Get an entry by index
-    ///
-    /// Returns `None` if the index is out of bounds.
-    pub fn get(&self, index: usize) -> Option<ChainEntry> {
-        if index >= self.len {
+    /// Get a specific table as a slice
+    #[cfg(target_endian = "little")]
+    pub fn table(&self, table_id: u32) -> Option<&[ChainEntry]> {
+        if table_id >= self.header.num_tables {
             return None;
         }
 
-        let offset = index * CHAIN_ENTRY_SIZE;
-        let bytes = &self.mmap[offset..offset + CHAIN_ENTRY_SIZE];
+        let table_size = self.header.chains_per_table as usize * CHAIN_ENTRY_SIZE;
+        let offset = FILE_HEADER_SIZE + table_id as usize * table_size;
+        let end = offset + table_size;
 
-        let start_seed = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        let end_seed = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        let data = &self.mmap[offset..end];
+        let ptr = data.as_ptr() as *const ChainEntry;
 
-        Some(ChainEntry {
-            start_seed,
-            end_seed,
-        })
-    }
-
-    /// Get a slice view as ChainEntry array
-    ///
-    /// This method provides zero-copy access to the table data.
-    ///
-    /// # Safety
-    ///
-    /// This is safe only on little-endian platforms where:
-    /// - `ChainEntry` is `#[repr(C)]` with 8-byte size
-    /// - File format is little-endian
-    /// - Platform is little-endian (x86/x86_64)
-    ///
-    /// # Panics
-    ///
-    /// Panics on big-endian platforms as they are not supported.
-    #[cfg(target_endian = "little")]
-    pub fn as_slice(&self) -> &[ChainEntry] {
-        // Verify alignment is correct for ChainEntry
-        let ptr = self.mmap.as_ptr();
-        let align = std::mem::align_of::<ChainEntry>();
-        assert_eq!(
-            ptr as usize % align,
-            0,
-            "Memory-mapped data is not properly aligned for ChainEntry"
-        );
-
-        unsafe { std::slice::from_raw_parts(ptr as *const ChainEntry, self.len) }
+        Some(unsafe { std::slice::from_raw_parts(ptr, self.header.chains_per_table as usize) })
     }
 
     #[cfg(target_endian = "big")]
-    pub fn as_slice(&self) -> &[ChainEntry] {
-        panic!(
-            "Big-endian platforms are not supported for memory-mapped tables. Use load_table() instead."
-        );
+    pub fn table(&self, _table_id: u32) -> Option<&[ChainEntry]> {
+        panic!("Big-endian platforms are not supported for memory-mapped tables.");
     }
 
-    /// Return an iterator over entries
-    ///
-    /// This iterator safely accesses each entry using the `get()` method,
-    /// which performs bounds checking.
-    pub fn iter(&self) -> impl Iterator<Item = ChainEntry> + '_ {
-        (0..self.len).filter_map(move |i| self.get(i))
+    /// Get the number of tables
+    pub fn num_tables(&self) -> u32 {
+        self.header.num_tables
+    }
+
+    /// Get the number of chains per table
+    pub fn chains_per_table(&self) -> u32 {
+        self.header.chains_per_table
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{NUM_CHAINS, NUM_TABLES};
     use std::fs;
 
     fn create_temp_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(name)
     }
 
+    fn create_tables() -> Vec<Vec<ChainEntry>> {
+        (0..NUM_TABLES)
+            .map(|table_id| {
+                (0..NUM_CHAINS)
+                    .map(|seed| ChainEntry::new(seed + table_id * NUM_CHAINS, seed))
+                    .collect()
+            })
+            .collect()
+    }
+
     #[test]
     fn test_save_and_load_table() {
-        let path = create_temp_file("test_table.bin");
+        let path = create_temp_file("test_table.g7rt");
+        let tables = create_tables();
 
-        let entries = vec![
-            ChainEntry::new(1, 100),
-            ChainEntry::new(2, 200),
-            ChainEntry::new(3, 300),
-        ];
+        save_single_table(&path, 417, &tables, true).expect("Failed to save");
+        let options = ValidationOptions::for_search(417);
+        let (header, loaded) = load_single_table(&path, &options).expect("Failed to load");
 
-        save_table(&path, &entries).expect("Failed to save");
-        let loaded = load_table(&path).expect("Failed to load");
-
-        assert_eq!(entries, loaded);
+        assert_eq!(header.consumption, 417);
+        assert_eq!(loaded.len(), NUM_TABLES as usize);
+        assert_eq!(loaded[0].len(), NUM_CHAINS as usize);
 
         fs::remove_file(path).ok();
     }
 
     #[test]
-    fn test_save_empty_table() {
-        let path = create_temp_file("test_empty_table.bin");
+    fn test_table_file_size_validation() {
+        let path = create_temp_file("test_table_size.g7rt");
+        let header = TableHeader::new(417, true);
 
-        let entries: Vec<ChainEntry> = vec![];
+        let mut file = File::create(&path).expect("Failed to create");
+        file.write_all(&header.to_bytes()).expect("Failed to write");
+        file.flush().expect("Failed to flush");
 
-        save_table(&path, &entries).expect("Failed to save");
-        let loaded = load_table(&path).expect("Failed to load");
-
-        assert!(loaded.is_empty());
+        let options = ValidationOptions::for_search(417);
+        let result = load_single_table(&path, &options);
+        assert!(matches!(
+            result,
+            Err(TableFormatError::InvalidFileSize { .. })
+        ));
 
         fs::remove_file(path).ok();
     }
 
     #[test]
-    fn test_load_nonexistent_file() {
-        let result = load_table("/nonexistent/path/file.bin");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_get_table_path() {
-        // Legacy API defaults to table_id=0
-        assert_eq!(get_table_path(417), PathBuf::from("417_0.bin"));
-        assert_eq!(get_table_path(477), PathBuf::from("477_0.bin"));
-    }
-
-    #[test]
-    fn test_get_sorted_table_path() {
-        // Legacy API defaults to table_id=0
+    fn test_get_single_table_path() {
         assert_eq!(
-            get_sorted_table_path(417),
-            PathBuf::from("417_0.sorted.bin")
+            get_single_table_path(".", 417),
+            PathBuf::from(".").join("417.g7rt")
         );
         assert_eq!(
-            get_sorted_table_path(477),
-            PathBuf::from("477_0.sorted.bin")
-        );
-    }
-
-    #[test]
-    fn test_get_table_path_with_table_id() {
-        assert_eq!(
-            get_table_path_with_table_id(417, 0),
-            PathBuf::from("417_0.bin")
-        );
-        assert_eq!(
-            get_table_path_with_table_id(417, 3),
-            PathBuf::from("417_3.bin")
-        );
-        assert_eq!(
-            get_table_path_with_table_id(477, 7),
-            PathBuf::from("477_7.bin")
-        );
-    }
-
-    #[test]
-    fn test_get_sorted_table_path_with_table_id() {
-        assert_eq!(
-            get_sorted_table_path_with_table_id(417, 0),
-            PathBuf::from("417_0.sorted.bin")
-        );
-        assert_eq!(
-            get_sorted_table_path_with_table_id(417, 5),
-            PathBuf::from("417_5.sorted.bin")
-        );
-        assert_eq!(
-            get_sorted_table_path_with_table_id(477, 7),
-            PathBuf::from("477_7.sorted.bin")
+            get_single_table_path("tables", 477),
+            PathBuf::from("tables").join("477.g7rt")
         );
     }
 
     #[cfg(feature = "mmap")]
     #[test]
     fn test_mapped_table_read() {
-        let path = create_temp_file("test_mmap.bin");
+        let path = create_temp_file("test_mmap.g7rt");
+        let tables = create_tables();
 
-        let entries = vec![
-            ChainEntry::new(1, 100),
-            ChainEntry::new(2, 200),
-            ChainEntry::new(3, 300),
-        ];
+        save_single_table(&path, 417, &tables, true).expect("Failed to save");
 
-        save_table(&path, &entries).expect("Failed to save");
+        let options = ValidationOptions::for_search(417);
+        let table = MappedSingleTable::open(&path, &options).expect("Failed to open");
 
-        // Open with memory-mapped I/O
-        let table = MappedTable::open(&path).expect("Failed to open");
-
-        assert_eq!(table.len(), 3);
-        assert!(!table.is_empty());
-        assert_eq!(table.get(0), Some(ChainEntry::new(1, 100)));
-        assert_eq!(table.get(1), Some(ChainEntry::new(2, 200)));
-        assert_eq!(table.get(2), Some(ChainEntry::new(3, 300)));
-        assert_eq!(table.get(3), None);
-
-        fs::remove_file(path).ok();
-    }
-
-    #[cfg(feature = "mmap")]
-    #[test]
-    fn test_mapped_table_as_slice() {
-        let path = create_temp_file("test_mmap_slice.bin");
-
-        let entries = vec![ChainEntry::new(1, 100), ChainEntry::new(2, 200)];
-
-        save_table(&path, &entries).expect("Failed to save");
-
-        let table = MappedTable::open(&path).expect("Failed to open");
-        let slice = table.as_slice();
-
-        assert_eq!(slice.len(), 2);
-        assert_eq!(slice[0], ChainEntry::new(1, 100));
-        assert_eq!(slice[1], ChainEntry::new(2, 200));
-
-        fs::remove_file(path).ok();
-    }
-
-    #[cfg(feature = "mmap")]
-    #[test]
-    fn test_mapped_table_empty() {
-        let path = create_temp_file("test_mmap_empty.bin");
-
-        save_table(&path, &[]).expect("Failed to save");
-
-        let table = MappedTable::open(&path).expect("Failed to open");
-
-        assert!(table.is_empty());
-        assert_eq!(table.len(), 0);
-
-        fs::remove_file(path).ok();
-    }
-
-    #[cfg(feature = "mmap")]
-    #[test]
-    fn test_mapped_table_iter() {
-        let path = create_temp_file("test_mmap_iter.bin");
-
-        let entries = vec![
-            ChainEntry::new(10, 1000),
-            ChainEntry::new(20, 2000),
-            ChainEntry::new(30, 3000),
-        ];
-
-        save_table(&path, &entries).expect("Failed to save");
-
-        let table = MappedTable::open(&path).expect("Failed to open");
-        let collected: Vec<ChainEntry> = table.iter().collect();
-
-        assert_eq!(collected, entries);
+        assert_eq!(table.num_tables(), NUM_TABLES);
+        assert_eq!(table.chains_per_table(), NUM_CHAINS);
+        assert!(table.table(0).is_some());
+        assert!(table.table(NUM_TABLES).is_none());
 
         fs::remove_file(path).ok();
     }
@@ -400,54 +293,18 @@ mod tests {
     #[cfg(feature = "mmap")]
     #[test]
     fn test_mapped_table_matches_load_table() {
-        let path = create_temp_file("test_mmap_match.bin");
+        let path = create_temp_file("test_mmap_match.g7rt");
+        let tables = create_tables();
 
-        let entries = vec![
-            ChainEntry::new(12345, 67890),
-            ChainEntry::new(11111, 22222),
-            ChainEntry::new(99999, 88888),
-        ];
+        save_single_table(&path, 417, &tables, true).expect("Failed to save");
 
-        save_table(&path, &entries).expect("Failed to save");
+        let options = ValidationOptions::for_search(417);
+        let (header, loaded) = load_single_table(&path, &options).expect("Failed to load");
+        let mapped = MappedSingleTable::open(&path, &options).expect("Failed to open");
 
-        // Load with traditional method
-        let loaded = load_table(&path).expect("Failed to load");
-
-        // Load with memory-mapped method
-        let mapped = MappedTable::open(&path).expect("Failed to open");
-        let mapped_slice = mapped.as_slice();
-
-        assert_eq!(loaded.len(), mapped_slice.len());
-        for (i, entry) in loaded.iter().enumerate() {
-            assert_eq!(entry, &mapped_slice[i]);
-        }
-
-        fs::remove_file(path).ok();
-    }
-
-    #[test]
-    fn test_file_format_little_endian() {
-        let path = create_temp_file("test_endian.bin");
-
-        let entries = vec![ChainEntry::new(0x12345678, 0xABCDEF00)];
-
-        save_table(&path, &entries).expect("Failed to save");
-
-        // Read raw bytes to verify little-endian format
-        let bytes = fs::read(&path).expect("Failed to read");
-        assert_eq!(bytes.len(), 8);
-
-        // start_seed: 0x12345678 in little-endian
-        assert_eq!(bytes[0], 0x78);
-        assert_eq!(bytes[1], 0x56);
-        assert_eq!(bytes[2], 0x34);
-        assert_eq!(bytes[3], 0x12);
-
-        // end_seed: 0xABCDEF00 in little-endian
-        assert_eq!(bytes[4], 0x00);
-        assert_eq!(bytes[5], 0xEF);
-        assert_eq!(bytes[6], 0xCD);
-        assert_eq!(bytes[7], 0xAB);
+        assert_eq!(mapped.header(), &header);
+        assert_eq!(loaded.len(), mapped.num_tables() as usize);
+        assert_eq!(loaded[0].len(), mapped.chains_per_table() as usize);
 
         fs::remove_file(path).ok();
     }

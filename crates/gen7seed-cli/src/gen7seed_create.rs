@@ -3,20 +3,15 @@
 //! Usage: gen7seed_create <consumption> [options]
 //!
 //! Options:
-//!   --table-id <N>   Table ID to generate (0-7, default: generates all 8 tables)
 //!   --no-sort        Skip sorting (generate unsorted table only)
-//!   --keep-unsorted  Keep unsorted table after sorting (default: delete)
 //!   --out-dir <PATH> Output directory (default: current directory)
 //!   --help, -h       Show help
 //!
 //! Example:
-//!   gen7seed_create 417              # Generate all 8 tables
-//!   gen7seed_create 417 --table-id 0 # Generate only table 0
+//!   gen7seed_create 417
 
 use gen7seed_rainbow::constants::{NUM_TABLES, SUPPORTED_CONSUMPTIONS};
-use gen7seed_rainbow::infra::table_io::{
-    get_sorted_table_path_in_dir, get_table_path_in_dir, save_table,
-};
+use gen7seed_rainbow::infra::table_io::{get_single_table_path, save_single_table};
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
 use gen7seed_rainbow::{GenerateOptions, generate_table};
 use std::env;
@@ -26,9 +21,7 @@ use std::time::Instant;
 
 struct Args {
     consumption: i32,
-    table_id: Option<u32>,
     no_sort: bool,
-    keep_unsorted: bool,
     out_dir: Option<PathBuf>,
 }
 
@@ -39,13 +32,7 @@ fn print_usage(program: &str) {
     eprintln!("  <consumption>    Number of RNG consumptions (e.g., 417)");
     eprintln!();
     eprintln!("Options:");
-    eprintln!(
-        "  --table-id <N>   Table ID to generate (0-{}, default: generates all {} tables)",
-        NUM_TABLES - 1,
-        NUM_TABLES
-    );
     eprintln!("  --no-sort        Skip sorting (generate unsorted table only)");
-    eprintln!("  --keep-unsorted  Keep unsorted table after sorting (default: delete)");
     eprintln!("  --out-dir <PATH> Output directory for table files (default: current directory)");
     eprintln!("  --help, -h       Show this help message");
     eprintln!();
@@ -56,29 +43,13 @@ fn parse_args() -> Result<Args, String> {
     let args: Vec<String> = env::args().collect();
 
     let mut consumption: Option<i32> = None;
-    let mut table_id: Option<u32> = None;
     let mut no_sort = false;
-    let mut keep_unsorted = false;
     let mut out_dir: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--table-id" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--table-id requires a value".to_string());
-                }
-                let id: u32 = args[i]
-                    .parse()
-                    .map_err(|_| format!("Invalid table-id value: {}", args[i]))?;
-                if id >= NUM_TABLES {
-                    return Err(format!("Table ID must be 0-{}, got {}", NUM_TABLES - 1, id));
-                }
-                table_id = Some(id);
-            }
             "--no-sort" => no_sort = true,
-            "--keep-unsorted" => keep_unsorted = true,
             "--out-dir" => {
                 i += 1;
                 if i >= args.len() {
@@ -108,20 +79,17 @@ fn parse_args() -> Result<Args, String> {
 
     Ok(Args {
         consumption,
-        table_id,
         no_sort,
-        keep_unsorted,
         out_dir,
     })
 }
 
-fn generate_single_table(
+fn generate_table_entries(
     consumption: i32,
     table_id: u32,
     no_sort: bool,
-    keep_unsorted: bool,
-    out_dir: &PathBuf,
-) {
+    total_tables: u32,
+) -> Vec<gen7seed_rainbow::ChainEntry> {
     println!(
         "Generating rainbow table {} for consumption {}...",
         table_id, consumption
@@ -160,19 +128,6 @@ fn generate_single_table(
         gen_elapsed.as_secs_f64()
     );
 
-    // Save unsorted table
-    let unsorted_path = get_table_path_in_dir(out_dir, consumption, table_id);
-    println!("Saving unsorted table to {}...", unsorted_path.display());
-
-    match save_table(&unsorted_path, &entries) {
-        Ok(_) => println!("Unsorted table saved successfully."),
-        Err(e) => {
-            eprintln!("Error saving table: {}", e);
-            std::process::exit(1);
-        }
-    }
-
-    // Sort if not skipped
     if !no_sort {
         println!("Sorting...");
         let sort_start = Instant::now();
@@ -180,38 +135,12 @@ fn generate_single_table(
         let sort_elapsed = sort_start.elapsed();
         println!("Sorted in {:.2} seconds.", sort_elapsed.as_secs_f64());
 
-        // Save sorted table
-        let sorted_path = get_sorted_table_path_in_dir(out_dir, consumption, table_id);
-        println!("Saving sorted table to {}...", sorted_path.display());
-
-        match save_table(&sorted_path, &entries) {
-            Ok(_) => println!("Sorted table saved successfully."),
-            Err(e) => {
-                eprintln!("Error saving sorted table: {}", e);
-                std::process::exit(1);
-            }
-        }
-
-        let file_size = std::fs::metadata(&sorted_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
-        println!("File size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
-
-        // Remove unsorted table unless --keep-unsorted
-        if !keep_unsorted {
-            match std::fs::remove_file(&unsorted_path) {
-                Ok(_) => println!("Removed unsorted table: {}", unsorted_path.display()),
-                Err(e) => {
-                    eprintln!("Warning: Failed to remove unsorted table: {}", e);
-                }
-            }
-        }
-    } else {
-        let file_size = std::fs::metadata(&unsorted_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
-        println!("File size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
+        println!("Sorted in {:.2} seconds.", sort_elapsed.as_secs_f64());
     }
+
+    println!("[Table {}/{}] Done.\n", table_id + 1, total_tables);
+
+    entries
 }
 
 fn main() {
@@ -243,37 +172,29 @@ fn main() {
 
     let resolved_dir = args.out_dir.clone().unwrap_or_else(|| PathBuf::from("."));
 
-    match args.table_id {
-        Some(id) => {
-            // Generate single table
-            generate_single_table(
-                args.consumption,
-                id,
-                args.no_sort,
-                args.keep_unsorted,
-                &resolved_dir,
-            );
-        }
-        None => {
-            // Generate all tables
-            println!(
-                "Generating all {} tables for consumption {}...",
-                NUM_TABLES, args.consumption
-            );
-            println!();
+    println!(
+        "Generating all {} tables for consumption {}...",
+        NUM_TABLES, args.consumption
+    );
+    println!();
 
-            for table_id in 0..NUM_TABLES {
-                generate_single_table(
-                    args.consumption,
-                    table_id,
-                    args.no_sort,
-                    args.keep_unsorted,
-                    &resolved_dir,
-                );
-                println!();
-            }
-        }
+    let mut tables = Vec::with_capacity(NUM_TABLES as usize);
+    for table_id in 0..NUM_TABLES {
+        let entries = generate_table_entries(args.consumption, table_id, args.no_sort, NUM_TABLES);
+        tables.push(entries);
     }
+
+    let output_path = get_single_table_path(&resolved_dir, args.consumption);
+    println!("Saving to {}...", output_path.display());
+    if let Err(e) = save_single_table(&output_path, args.consumption, &tables, !args.no_sort) {
+        eprintln!("Error saving table file: {}", e);
+        std::process::exit(1);
+    }
+
+    let file_size = std::fs::metadata(&output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    println!("File size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
 
     let total_elapsed = start.elapsed();
     println!(
@@ -282,7 +203,7 @@ fn main() {
     );
 
     if args.no_sort {
-        println!("Note: Tables were not sorted. Run with default options to include sorting.");
+        println!("Note: Tables were not sorted. Search requires a sorted table.");
     } else {
         println!("The tables are ready for searching with gen7seed_search.");
     }

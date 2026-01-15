@@ -24,26 +24,34 @@ pub use constants::*;
 pub use domain::chain::ChainEntry;
 pub use domain::coverage::SeedBitmap;
 pub use domain::hash::{gen_hash, gen_hash_from_seed, reduce_hash_with_salt};
+pub use domain::missing_format::{MissingFormatError, MissingSeedsHeader};
 pub use domain::sfmt::Sfmt;
+pub use domain::table_format::{TableFormatError, TableHeader, ValidationOptions};
 
 // Re-export generator types and functions
-pub use app::generator::{GenerateOptions, generate_table};
+pub use app::generator::{GenerateOptions, generate_all_tables, generate_table};
 
 // Re-export searcher function
-pub use app::searcher::search_seeds;
+pub use app::searcher::{search_seeds, search_seeds_with_validation};
 
 // Re-export coverage analysis types
 pub use app::coverage::{
     BitmapOptions, MissingSeedsResult, build_seed_bitmap, extract_missing_seeds,
+    extract_missing_seeds_with_header,
 };
 
 // Re-export multi-table coverage analysis types (multi-sfmt feature)
 #[cfg(feature = "multi-sfmt")]
-pub use app::coverage::{build_seed_bitmap_multi_table, extract_missing_seeds_multi_table};
+pub use app::coverage::{
+    build_seed_bitmap_multi_table, extract_missing_seeds_multi_table,
+    extract_missing_seeds_multi_table_with_header,
+};
 
 // Re-export missing seeds I/O
-pub use infra::missing_seeds_io::{get_missing_seeds_path, load_missing_seeds, save_missing_seeds};
+pub use infra::missing_seeds_io::{
+    get_missing_seeds_path, load_missing_seeds, save_missing_seeds, verify_missing_seeds_source,
+};
 
 // Re-export mmap functionality when feature is enabled
 #[cfg(feature = "mmap")]
-pub use infra::table_io::MappedTable;
+pub use infra::table_io::MappedSingleTable;

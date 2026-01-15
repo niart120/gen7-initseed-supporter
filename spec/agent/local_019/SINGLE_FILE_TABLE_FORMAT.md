@@ -1215,57 +1215,57 @@ mod tests {
 
 ### 6.1 Phase 1: 基盤実装（テーブル形式）
 
-- [ ] `constants.rs` にマジックナンバー・バージョン等の定数追加
-- [ ] `domain/table_format.rs` 新規作成
-  - [ ] `TableHeader` 構造体
-  - [ ] `TableFormatError` エラー型
-  - [ ] `ValidationOptions` 構造体
-  - [ ] シリアライズ/デシリアライズ関数
-  - [ ] バリデーション関数
-- [ ] `domain/mod.rs` にモジュール追加
+- [x] `constants.rs` にマジックナンバー・バージョン等の定数追加
+- [x] `domain/table_format.rs` 新規作成
+  - [x] `TableHeader` 構造体
+  - [x] `TableFormatError` エラー型
+  - [x] `ValidationOptions` 構造体
+  - [x] シリアライズ/デシリアライズ関数
+  - [x] バリデーション関数
+- [x] `domain/mod.rs` にモジュール追加
 
 ### 6.2 Phase 2: 基盤実装（Missing Seeds 形式）
 
-- [ ] `domain/missing_format.rs` 新規作成
-  - [ ] `MissingSeedsHeader` 構造体
-  - [ ] `MissingFormatError` エラー型
-  - [ ] `calculate_source_checksum()` 関数
-  - [ ] シリアライズ/デシリアライズ関数
-  - [ ] ソース検証関数
+- [x] `domain/missing_format.rs` 新規作成
+  - [x] `MissingSeedsHeader` 構造体
+  - [x] `MissingFormatError` エラー型
+  - [x] `calculate_source_checksum()` 関数
+  - [x] シリアライズ/デシリアライズ関数
+  - [x] ソース検証関数
 
 ### 6.3 Phase 3: I/O 層実装
 
-- [ ] `infra/table_io.rs` 変更
-  - [ ] `get_single_table_path()`
-  - [ ] `load_single_table()`
-  - [ ] `save_single_table()`
-  - [ ] `MappedSingleTable`（mmap feature）
-  - [ ] 旧関数の削除
-- [ ] `infra/missing_seeds_io.rs` 変更
-  - [ ] `get_missing_seeds_path()`
-  - [ ] `load_missing_seeds()`
-  - [ ] `save_missing_seeds()`
-  - [ ] `verify_missing_seeds_source()`
-  - [ ] 旧関数の削除
+- [x] `infra/table_io.rs` 変更
+  - [x] `get_single_table_path()`
+  - [x] `load_single_table()`
+  - [x] `save_single_table()`
+  - [x] `MappedSingleTable`（mmap feature）
+  - [x] 旧関数の削除
+- [x] `infra/missing_seeds_io.rs` 変更
+  - [x] `get_missing_seeds_path()`
+  - [x] `load_missing_seeds()`
+  - [x] `save_missing_seeds()`
+  - [x] `verify_missing_seeds_source()`
+  - [x] 旧関数の削除
 
 ### 6.4 Phase 4: アプリケーション層対応
 
-- [ ] `app/generator.rs` 全テーブル統合生成対応
-- [ ] `app/searcher.rs` メタデータ検証付き検索対応
-- [ ] `app/coverage.rs` Missing Seeds 抽出時のヘッダ生成対応
-- [ ] `lib.rs` エクスポート追加
+- [x] `app/generator.rs` 全テーブル統合生成対応
+- [x] `app/searcher.rs` メタデータ検証付き検索対応
+- [x] `app/coverage.rs` Missing Seeds 抽出時のヘッダ生成対応
+- [x] `lib.rs` エクスポート追加
 
 ### 6.5 Phase 5: CLI 対応
 
-- [ ] `gen7seed_create.rs` シングルファイル出力
-- [ ] `gen7seed_search.rs` シングルファイル読込・エラーハンドリング
+- [x] `gen7seed_create.rs` シングルファイル出力
+- [x] `gen7seed_search.rs` シングルファイル読込・エラーハンドリング
 
 ### 6.6 Phase 6: テスト・ドキュメント
 
-- [ ] テーブル形式ユニットテスト作成
-- [ ] Missing Seeds 形式ユニットテスト作成
-- [ ] 統合テスト作成
-- [ ] README.md 更新
+- [x] テーブル形式ユニットテスト作成
+- [x] Missing Seeds 形式ユニットテスト作成
+- [x] 統合テスト作成
+- [x] README.md 更新
 - [ ] copilot-instructions.md 更新（コマンド例等）
 
 ---

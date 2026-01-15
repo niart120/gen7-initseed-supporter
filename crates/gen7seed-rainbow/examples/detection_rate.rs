@@ -6,7 +6,7 @@
 //! ## 実行方法
 //!
 //! ```powershell
-//! # T枚のテーブルが必要（417_0.sorted.bin - 417_{T-1}.sorted.bin）
+//! # シングルファイルテーブルが必要（417.g7rt）
 //! cargo run --example detection_rate -p gen7seed-rainbow --release
 //! ```
 //!
@@ -27,8 +27,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
-use gen7seed_rainbow::constants::NUM_TABLES;
-use gen7seed_rainbow::infra::table_io::load_table;
+use gen7seed_rainbow::ValidationOptions;
+use gen7seed_rainbow::infra::table_io::{get_single_table_path, load_single_table};
 use gen7seed_rainbow::search_seeds;
 use rand::Rng;
 
@@ -42,22 +42,24 @@ fn main() {
     println!("[Detection Rate Evaluation]");
     println!("Directory: {}", table_dir.display());
 
-    // Load all tables
-    println!("Loading {} tables...", NUM_TABLES);
+    // Load table file
+    println!("Loading table file...");
     let start = Instant::now();
-    let mut tables = Vec::new();
-    for table_id in 0..NUM_TABLES {
-        let path = table_dir.join(format!("{}_{}.sorted.bin", CONSUMPTION, table_id));
-        match load_table(&path) {
-            Ok(t) => tables.push(t),
-            Err(e) => {
-                eprintln!("Warning: Failed to load table {}: {}", table_id, e);
-            }
+    let path = get_single_table_path(&table_dir, CONSUMPTION);
+    let options = ValidationOptions::for_search(CONSUMPTION);
+    let (header, tables) = match load_single_table(&path, &options) {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("Error: Failed to load table file: {}", e);
+            eprintln!(
+                "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
+            );
+            std::process::exit(1);
         }
-    }
+    };
     println!(
         "Loaded {} tables in {:.2}s",
-        tables.len(),
+        header.num_tables,
         start.elapsed().as_secs_f64()
     );
     if tables.is_empty() {
@@ -67,9 +69,7 @@ fn main() {
         );
         std::process::exit(1);
     }
-    if let Some(first) = tables.first() {
-        println!("Entries per table: {}", first.len());
-    }
+    println!("Entries per table: {}", header.chains_per_table);
     println!("Sample count: {}", SAMPLE_COUNT);
     println!();
 
@@ -127,12 +127,12 @@ fn get_table_dir() -> PathBuf {
         .map(PathBuf::from)
         .expect("Failed to determine project root");
 
-    // Check if at least one table exists
-    let test_file = default_path.join(format!("{}_0.sorted.bin", CONSUMPTION));
+    // Check if table exists
+    let test_file = get_single_table_path(&default_path, CONSUMPTION);
     if test_file.exists() {
         default_path
     } else {
-        eprintln!("Error: Table files not found at {:?}", default_path);
+        eprintln!("Error: Table file not found at {:?}", test_file);
         eprintln!(
             "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
         );

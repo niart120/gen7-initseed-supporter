@@ -3,7 +3,7 @@
 //! This module provides a unified function for generating rainbow tables
 //! with configurable options for range, table_id, and progress reporting.
 
-use crate::constants::NUM_CHAINS;
+use crate::constants::{NUM_CHAINS, NUM_TABLES};
 use crate::domain::chain::{ChainEntry, compute_chain};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -96,6 +96,18 @@ where
     {
         generate_impl_scalar(consumption, options)
     }
+}
+
+/// Generate all tables for a consumption value.
+pub fn generate_all_tables(consumption: i32) -> Vec<Vec<ChainEntry>> {
+    (0..NUM_TABLES)
+        .map(|table_id| {
+            generate_table(
+                consumption,
+                GenerateOptions::default().with_table_id(table_id),
+            )
+        })
+        .collect()
 }
 
 /// Multi-SFMT + rayon parallel implementation
