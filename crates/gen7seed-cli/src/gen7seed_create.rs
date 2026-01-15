@@ -6,6 +6,7 @@
 //!   --table-id <N>   Table ID to generate (0-7, default: generates all 8 tables)
 //!   --no-sort        Skip sorting (generate unsorted table only)
 //!   --keep-unsorted  Keep unsorted table after sorting (default: delete)
+//!   --out-dir <PATH> Output directory (default: current directory)
 //!   --help, -h       Show help
 //!
 //! Example:
@@ -14,12 +15,13 @@
 
 use gen7seed_rainbow::constants::{NUM_TABLES, SUPPORTED_CONSUMPTIONS};
 use gen7seed_rainbow::infra::table_io::{
-    get_sorted_table_path_with_table_id, get_table_path_with_table_id, save_table,
+    get_sorted_table_path_in_dir, get_table_path_in_dir, save_table,
 };
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
 use gen7seed_rainbow::{GenerateOptions, generate_table};
 use std::env;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::time::Instant;
 
 struct Args {
@@ -27,6 +29,7 @@ struct Args {
     table_id: Option<u32>,
     no_sort: bool,
     keep_unsorted: bool,
+    out_dir: Option<PathBuf>,
 }
 
 fn print_usage(program: &str) {
@@ -43,6 +46,7 @@ fn print_usage(program: &str) {
     );
     eprintln!("  --no-sort        Skip sorting (generate unsorted table only)");
     eprintln!("  --keep-unsorted  Keep unsorted table after sorting (default: delete)");
+    eprintln!("  --out-dir <PATH> Output directory for table files (default: current directory)");
     eprintln!("  --help, -h       Show this help message");
     eprintln!();
     eprintln!("Supported consumption values: {:?}", SUPPORTED_CONSUMPTIONS);
@@ -55,6 +59,7 @@ fn parse_args() -> Result<Args, String> {
     let mut table_id: Option<u32> = None;
     let mut no_sort = false;
     let mut keep_unsorted = false;
+    let mut out_dir: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -74,6 +79,13 @@ fn parse_args() -> Result<Args, String> {
             }
             "--no-sort" => no_sort = true,
             "--keep-unsorted" => keep_unsorted = true,
+            "--out-dir" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--out-dir requires a value".to_string());
+                }
+                out_dir = Some(PathBuf::from(&args[i]));
+            }
             "--help" | "-h" => {
                 print_usage(&args[0]);
                 std::process::exit(0);
@@ -99,10 +111,17 @@ fn parse_args() -> Result<Args, String> {
         table_id,
         no_sort,
         keep_unsorted,
+        out_dir,
     })
 }
 
-fn generate_single_table(consumption: i32, table_id: u32, no_sort: bool, keep_unsorted: bool) {
+fn generate_single_table(
+    consumption: i32,
+    table_id: u32,
+    no_sort: bool,
+    keep_unsorted: bool,
+    out_dir: &PathBuf,
+) {
     println!(
         "Generating rainbow table {} for consumption {}...",
         table_id, consumption
@@ -142,8 +161,8 @@ fn generate_single_table(consumption: i32, table_id: u32, no_sort: bool, keep_un
     );
 
     // Save unsorted table
-    let unsorted_path = get_table_path_with_table_id(consumption, table_id);
-    println!("Saving unsorted table to {}...", unsorted_path);
+    let unsorted_path = get_table_path_in_dir(out_dir, consumption, table_id);
+    println!("Saving unsorted table to {}...", unsorted_path.display());
 
     match save_table(&unsorted_path, &entries) {
         Ok(_) => println!("Unsorted table saved successfully."),
@@ -162,8 +181,8 @@ fn generate_single_table(consumption: i32, table_id: u32, no_sort: bool, keep_un
         println!("Sorted in {:.2} seconds.", sort_elapsed.as_secs_f64());
 
         // Save sorted table
-        let sorted_path = get_sorted_table_path_with_table_id(consumption, table_id);
-        println!("Saving sorted table to {}...", sorted_path);
+        let sorted_path = get_sorted_table_path_in_dir(out_dir, consumption, table_id);
+        println!("Saving sorted table to {}...", sorted_path.display());
 
         match save_table(&sorted_path, &entries) {
             Ok(_) => println!("Sorted table saved successfully."),
@@ -181,7 +200,7 @@ fn generate_single_table(consumption: i32, table_id: u32, no_sort: bool, keep_un
         // Remove unsorted table unless --keep-unsorted
         if !keep_unsorted {
             match std::fs::remove_file(&unsorted_path) {
-                Ok(_) => println!("Removed unsorted table: {}", unsorted_path),
+                Ok(_) => println!("Removed unsorted table: {}", unsorted_path.display()),
                 Err(e) => {
                     eprintln!("Warning: Failed to remove unsorted table: {}", e);
                 }
@@ -222,10 +241,18 @@ fn main() {
 
     let start = Instant::now();
 
+    let resolved_dir = args.out_dir.clone().unwrap_or_else(|| PathBuf::from("."));
+
     match args.table_id {
         Some(id) => {
             // Generate single table
-            generate_single_table(args.consumption, id, args.no_sort, args.keep_unsorted);
+            generate_single_table(
+                args.consumption,
+                id,
+                args.no_sort,
+                args.keep_unsorted,
+                &resolved_dir,
+            );
         }
         None => {
             // Generate all tables
@@ -236,7 +263,13 @@ fn main() {
             println!();
 
             for table_id in 0..NUM_TABLES {
-                generate_single_table(args.consumption, table_id, args.no_sort, args.keep_unsorted);
+                generate_single_table(
+                    args.consumption,
+                    table_id,
+                    args.no_sort,
+                    args.keep_unsorted,
+                    &resolved_dir,
+                );
                 println!();
             }
         }

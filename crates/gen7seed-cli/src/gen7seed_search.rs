@@ -1,19 +1,21 @@
 //! Initial seed search CLI
 //!
-//! Usage: gen7seed_search <consumption>
+//! Usage: gen7seed_search <consumption> [--table-dir <PATH>]
 //! Then enter 8 needle values (0-16) separated by spaces.
 //!
 //! Example:
 //!   gen7seed_search 417
+//!   gen7seed_search 417 --table-dir .\tables
 //!   Enter needle values (8 values, 0-16, space-separated): 5 12 3 8 14 1 9 6
 //!
 //! This tool searches across all 8 tables sequentially, stopping when a match is found.
 
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, NUM_TABLES, SUPPORTED_CONSUMPTIONS};
-use gen7seed_rainbow::infra::table_io::get_sorted_table_path_with_table_id;
+use gen7seed_rainbow::infra::table_io::get_sorted_table_path_in_dir;
 use gen7seed_rainbow::search_seeds;
 use std::env;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::time::Instant;
 
 #[cfg(feature = "mmap")]
@@ -48,30 +50,62 @@ impl TableSet {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <consumption>", args[0]);
+    if args.len() < 2 || args.len() > 4 {
+        eprintln!("Usage: {} <consumption> [--table-dir <PATH>]", args[0]);
         eprintln!("Supported consumption values: {:?}", SUPPORTED_CONSUMPTIONS);
         std::process::exit(1);
     }
 
-    let consumption: i32 = match args[1].parse() {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("Error: Invalid consumption value '{}'", args[1]);
+    let mut consumption: Option<i32> = None;
+    let mut table_dir: Option<PathBuf> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--table-dir" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("--table-dir requires a value");
+                    std::process::exit(1);
+                }
+                table_dir = Some(PathBuf::from(&args[i]));
+            }
+            value if !value.starts_with('-') => {
+                if consumption.is_some() {
+                    eprintln!("Error: duplicate consumption argument '{}'.", value);
+                    std::process::exit(1);
+                }
+                consumption = value.parse().ok();
+            }
+            other => {
+                eprintln!("Unknown option: {}", other);
+                std::process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
+    let consumption = match consumption {
+        Some(v) => v,
+        None => {
+            eprintln!("Error: Missing or invalid consumption value.");
             std::process::exit(1);
         }
     };
+
+    let resolved_dir = table_dir.unwrap_or_else(|| PathBuf::from("."));
 
     println!(
         "Loading {} tables for consumption {}...",
         NUM_TABLES, consumption
     );
+    println!("Table directory: {}", resolved_dir.display());
     let start_load = Instant::now();
 
     let mut table_set = TableSet::new();
 
     for table_id in 0..NUM_TABLES {
-        let table_path = get_sorted_table_path_with_table_id(consumption, table_id);
+        let table_path = get_sorted_table_path_in_dir(&resolved_dir, consumption, table_id);
 
         #[cfg(feature = "mmap")]
         {

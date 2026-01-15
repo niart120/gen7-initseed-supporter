@@ -5,12 +5,22 @@
 use crate::constants::CHAIN_ENTRY_SIZE;
 use crate::domain::chain::ChainEntry;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
+
+fn ensure_parent_dir(path: &Path) -> io::Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
+    }
+
+    Ok(())
+}
 
 /// Load table from file
 pub fn load_table(path: impl AsRef<Path>) -> io::Result<Vec<ChainEntry>> {
@@ -35,6 +45,8 @@ pub fn load_table(path: impl AsRef<Path>) -> io::Result<Vec<ChainEntry>> {
 
 /// Save table to file
 pub fn save_table(path: impl AsRef<Path>, entries: &[ChainEntry]) -> io::Result<()> {
+    ensure_parent_dir(path.as_ref())?;
+
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
 
@@ -49,29 +61,49 @@ pub fn save_table(path: impl AsRef<Path>, entries: &[ChainEntry]) -> io::Result<
 /// Get the expected file path for a consumption value (unsorted)
 ///
 /// Note: This is equivalent to `get_table_path_with_table_id(consumption, 0)`.
-pub fn get_table_path(consumption: i32) -> String {
+pub fn get_table_path(consumption: i32) -> PathBuf {
     get_table_path_with_table_id(consumption, 0)
 }
 
 /// Get the expected file path for a sorted consumption table
 ///
 /// Note: This is equivalent to `get_sorted_table_path_with_table_id(consumption, 0)`.
-pub fn get_sorted_table_path(consumption: i32) -> String {
+pub fn get_sorted_table_path(consumption: i32) -> PathBuf {
     get_sorted_table_path_with_table_id(consumption, 0)
 }
 
 /// Get the expected file path for a consumption value with table_id (unsorted)
 ///
 /// Format: `{consumption}_{table_id}.bin`
-pub fn get_table_path_with_table_id(consumption: i32, table_id: u32) -> String {
-    format!("{}_{}.bin", consumption, table_id)
+pub fn get_table_path_with_table_id(consumption: i32, table_id: u32) -> PathBuf {
+    PathBuf::from(format!("{}_{}.bin", consumption, table_id))
 }
 
 /// Get the expected file path for a sorted consumption table with table_id
 ///
 /// Format: `{consumption}_{table_id}.sorted.bin`
-pub fn get_sorted_table_path_with_table_id(consumption: i32, table_id: u32) -> String {
-    format!("{}_{}.sorted.bin", consumption, table_id)
+pub fn get_sorted_table_path_with_table_id(consumption: i32, table_id: u32) -> PathBuf {
+    PathBuf::from(format!("{}_{}.sorted.bin", consumption, table_id))
+}
+
+/// Get the expected file path for a consumption value within a custom directory (unsorted)
+///
+/// Format: `{dir}/{consumption}_{table_id}.bin`
+pub fn get_table_path_in_dir(dir: impl AsRef<Path>, consumption: i32, table_id: u32) -> PathBuf {
+    dir.as_ref()
+        .join(format!("{}_{}.bin", consumption, table_id))
+}
+
+/// Get the expected file path for a sorted consumption table within a custom directory
+///
+/// Format: `{dir}/{consumption}_{table_id}.sorted.bin`
+pub fn get_sorted_table_path_in_dir(
+    dir: impl AsRef<Path>,
+    consumption: i32,
+    table_id: u32,
+) -> PathBuf {
+    dir.as_ref()
+        .join(format!("{}_{}.sorted.bin", consumption, table_id))
 }
 
 // =============================================================================
@@ -235,37 +267,52 @@ mod tests {
     #[test]
     fn test_get_table_path() {
         // Legacy API defaults to table_id=0
-        assert_eq!(get_table_path(417), "417_0.bin");
-        assert_eq!(get_table_path(477), "477_0.bin");
+        assert_eq!(get_table_path(417), PathBuf::from("417_0.bin"));
+        assert_eq!(get_table_path(477), PathBuf::from("477_0.bin"));
     }
 
     #[test]
     fn test_get_sorted_table_path() {
         // Legacy API defaults to table_id=0
-        assert_eq!(get_sorted_table_path(417), "417_0.sorted.bin");
-        assert_eq!(get_sorted_table_path(477), "477_0.sorted.bin");
+        assert_eq!(
+            get_sorted_table_path(417),
+            PathBuf::from("417_0.sorted.bin")
+        );
+        assert_eq!(
+            get_sorted_table_path(477),
+            PathBuf::from("477_0.sorted.bin")
+        );
     }
 
     #[test]
     fn test_get_table_path_with_table_id() {
-        assert_eq!(get_table_path_with_table_id(417, 0), "417_0.bin");
-        assert_eq!(get_table_path_with_table_id(417, 3), "417_3.bin");
-        assert_eq!(get_table_path_with_table_id(477, 7), "477_7.bin");
+        assert_eq!(
+            get_table_path_with_table_id(417, 0),
+            PathBuf::from("417_0.bin")
+        );
+        assert_eq!(
+            get_table_path_with_table_id(417, 3),
+            PathBuf::from("417_3.bin")
+        );
+        assert_eq!(
+            get_table_path_with_table_id(477, 7),
+            PathBuf::from("477_7.bin")
+        );
     }
 
     #[test]
     fn test_get_sorted_table_path_with_table_id() {
         assert_eq!(
             get_sorted_table_path_with_table_id(417, 0),
-            "417_0.sorted.bin"
+            PathBuf::from("417_0.sorted.bin")
         );
         assert_eq!(
             get_sorted_table_path_with_table_id(417, 5),
-            "417_5.sorted.bin"
+            PathBuf::from("417_5.sorted.bin")
         );
         assert_eq!(
             get_sorted_table_path_with_table_id(477, 7),
-            "477_7.sorted.bin"
+            PathBuf::from("477_7.sorted.bin")
         );
     }
 

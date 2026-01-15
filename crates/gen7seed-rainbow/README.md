@@ -26,20 +26,32 @@
 
 ### 1. テーブル生成（全8枚）
 
-```bash
+```powershell
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417
 ```
 
 単一テーブルのみ生成する場合：
 
-```bash
+```powershell
 cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --table-id 0
+```
+
+出力ディレクトリを指定する場合（例: .\tables）：
+
+```powershell
+cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417 --out-dir .\tables
 ```
 
 ### 2. 初期Seed検索
 
-```bash
+```powershell
 cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
+```
+
+テーブルの参照ディレクトリを指定する場合：
+
+```powershell
+cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417 --table-dir .\tables
 ```
 
 8枚のテーブルを順次検索し、ヒットした時点で早期リターンします。
@@ -65,6 +77,10 @@ cargo run --example extract_missing_seeds -p gen7seed-rainbow --release
 ...
 417_7.sorted.bin   # テーブル 7 (16 MB)
 ```
+
+出力先ディレクトリは以下の優先度で決定されます：
+- CLI オプション: `--out-dir`（gen7seed_create）、`--table-dir`（gen7seed_search）
+- 上記が無い場合はカレントディレクトリ
 
 ## モジュール構成
 
