@@ -103,7 +103,7 @@ fn test_generate_and_search_single_file() {
 fn test_invalid_file_rejection() {
     let temp_dir = TempDir::new().unwrap();
     let table_path = temp_dir.path().join("invalid.g7rt");
-    let mut bytes = [0u8; gen7seed_rainbow::FILE_HEADER_SIZE];
+    let mut bytes = [0u8; gen7seed_rainbow::constants::FILE_HEADER_SIZE];
     bytes[0..8].copy_from_slice(b"INVALID!");
     std::fs::write(&table_path, bytes).unwrap();
 
