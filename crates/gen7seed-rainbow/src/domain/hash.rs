@@ -119,6 +119,57 @@ pub fn reduce_hash_x16_with_salt(hashes: [u64; 16], column: u32, table_id: u32) 
 }
 
 // =============================================================================
+// 16-table parallel reduction (multi-sfmt feature)
+// =============================================================================
+
+/// Pre-computed salts for 16 tables (table_id = 0..15)
+///
+/// Each salt is `table_id * 0x9e3779b97f4a7c15` (golden ratio constant).
+/// Computed at compile time for zero runtime overhead.
+#[cfg(feature = "multi-sfmt")]
+const MULTI_TABLE_SALTS: [u64; 16] = {
+    let mut salts = [0u64; 16];
+    let mut i = 0;
+    while i < 16 {
+        salts[i] = (i as u64).wrapping_mul(0x9e3779b97f4a7c15);
+        i += 1;
+    }
+    salts
+};
+
+/// Reduce 16 hashes for 16 different tables simultaneously
+///
+/// This is optimized for multi-table search where each hash corresponds
+/// to a different table (table_id = 0..15). The salts are pre-computed
+/// constants, avoiding runtime multiplication.
+///
+/// # Arguments
+/// * `hashes` - 16 hash values, one per table
+/// * `column` - The chain column position
+///
+/// # Returns
+/// 16 reduced seeds, one per table
+#[cfg(feature = "multi-sfmt")]
+#[inline]
+pub fn reduce_hash_x16_multi_table(hashes: [u64; 16], column: u32) -> [u32; 16] {
+    use std::simd::Simd;
+
+    let h = Simd::from_array(hashes);
+    let salts = Simd::from_array(MULTI_TABLE_SALTS);
+    let col = Simd::splat(column as u64);
+    let c1 = Simd::splat(0xbf58476d1ce4e5b9u64);
+    let c2 = Simd::splat(0x94d049bb133111ebu64);
+
+    let mut h = (h ^ salts) + col;
+    h = (h ^ (h >> 30)) * c1;
+    h = (h ^ (h >> 27)) * c2;
+    h ^= h >> 31;
+
+    let arr = h.to_array();
+    std::array::from_fn(|i| arr[i] as u32)
+}
+
+// =============================================================================
 // 16-parallel hash functions (multi-sfmt feature)
 // =============================================================================
 
@@ -529,5 +580,40 @@ mod tests {
                 "Legacy reduce_hash_x16 must equal reduce_hash_x16_with_salt with table_id=0"
             );
         }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_multi_table_matches_individual() {
+        // reduce_hash_x16_multi_table should produce the same results as
+        // calling reduce_hash_with_salt for each table_id individually
+        let hashes: [u64; 16] = std::array::from_fn(|i| {
+            0xABCDEF0123456789u64.wrapping_add(i as u64 * 0x1111111111111111)
+        });
+
+        for column in [0, 1, 100, 1000, 16383] {
+            let results_multi = reduce_hash_x16_multi_table(hashes, column);
+
+            for table_id in 0..16u32 {
+                let single_result =
+                    reduce_hash_with_salt(hashes[table_id as usize], column, table_id);
+                assert_eq!(
+                    results_multi[table_id as usize], single_result,
+                    "Mismatch for table_id {} at column {}",
+                    table_id, column
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_reduce_hash_x16_multi_table_deterministic() {
+        let hashes: [u64; 16] = std::array::from_fn(|i| i as u64 * 0x123456789);
+        let column = 500;
+
+        let result1 = reduce_hash_x16_multi_table(hashes, column);
+        let result2 = reduce_hash_x16_multi_table(hashes, column);
+        assert_eq!(result1, result2);
     }
 }

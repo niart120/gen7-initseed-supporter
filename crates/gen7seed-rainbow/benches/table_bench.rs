@@ -20,6 +20,9 @@ use gen7seed_rainbow::infra::table_io::load_single_table;
 use gen7seed_rainbow::infra::table_sort::sort_table_parallel;
 use gen7seed_rainbow::{GenerateOptions, Sfmt, ValidationOptions, generate_table, search_seeds};
 
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::search_seeds_x16;
+
 const CONSUMPTION: i32 = 417;
 const MINI_TABLE_SIZE: u32 = 1_000;
 
@@ -69,6 +72,34 @@ fn get_full_table() -> Option<&'static Vec<ChainEntry>> {
                     start.elapsed().as_secs_f64()
                 );
                 Some(table)
+            })
+        })
+        .as_ref()
+}
+
+/// Cached all 16 tables for x16 benchmarks
+#[cfg(feature = "multi-sfmt")]
+static FULL_TABLES_16: OnceLock<Option<Vec<Vec<ChainEntry>>>> = OnceLock::new();
+
+#[cfg(feature = "multi-sfmt")]
+fn get_full_tables_16() -> Option<&'static Vec<Vec<ChainEntry>>> {
+    FULL_TABLES_16
+        .get_or_init(|| {
+            get_full_table_path().and_then(|path| {
+                eprintln!("[table_bench] Loading all 16 tables from {:?}...", path);
+                let start = Instant::now();
+                let options = ValidationOptions::for_search(CONSUMPTION);
+                let (_header, tables) = load_single_table(&path, &options).ok()?;
+                if tables.len() != 16 {
+                    eprintln!("[table_bench] Expected 16 tables, found {}", tables.len());
+                    return None;
+                }
+                eprintln!(
+                    "[table_bench] Loaded 16 tables ({} entries each) in {:.2}s",
+                    tables[0].len(),
+                    start.elapsed().as_secs_f64()
+                );
+                Some(tables)
             })
         })
         .as_ref()
@@ -145,6 +176,30 @@ fn bench_search_full_table(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark for 16-table parallel search using multi-sfmt
+#[cfg(feature = "multi-sfmt")]
+fn bench_search_x16(c: &mut Criterion) {
+    let Some(tables) = get_full_tables_16() else {
+        eprintln!("[table_bench] Skipping x16 benchmark: tables not found");
+        return;
+    };
+
+    let mut group = c.benchmark_group("search_full_table");
+
+    // Build table references
+    let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
+
+    // Benchmark with a known seed
+    let seed = (tables[0].len() as u32) / 2;
+    let needle = generate_needle_from_seed(seed, CONSUMPTION);
+
+    group.bench_function("multi_sfmt_search", |b| {
+        b.iter(|| search_seeds_x16(black_box(needle), CONSUMPTION, table_refs))
+    });
+
+    group.finish();
+}
+
 criterion_group! {
     name = benches;
     config = table_criterion();
@@ -152,4 +207,16 @@ criterion_group! {
         bench_search_mini_table,
         bench_search_full_table,
 }
+
+#[cfg(feature = "multi-sfmt")]
+criterion_group! {
+    name = benches_x16;
+    config = table_criterion();
+    targets = bench_search_x16,
+}
+
+#[cfg(feature = "multi-sfmt")]
+criterion_main!(benches, benches_x16);
+
+#[cfg(not(feature = "multi-sfmt"))]
 criterion_main!(benches);

@@ -81,7 +81,7 @@ impl TableHeader {
 
     /// Deserialize header from bytes
     pub fn from_bytes(buf: &[u8; FILE_HEADER_SIZE]) -> Result<Self, TableFormatError> {
-        if &buf[0..8] != &TABLE_MAGIC {
+        if buf[0..8] != TABLE_MAGIC {
             return Err(TableFormatError::InvalidMagic);
         }
 
@@ -205,14 +205,13 @@ pub fn validate_header(
     header: &TableHeader,
     options: &ValidationOptions,
 ) -> Result<(), TableFormatError> {
-    if let Some(expected) = options.expected_consumption {
-        if header.consumption != expected {
+    if let Some(expected) = options.expected_consumption
+        && header.consumption != expected {
             return Err(TableFormatError::ConsumptionMismatch {
                 expected,
                 found: header.consumption,
             });
         }
-    }
 
     if options.require_sorted && !header.is_sorted() {
         return Err(TableFormatError::TableNotSorted);

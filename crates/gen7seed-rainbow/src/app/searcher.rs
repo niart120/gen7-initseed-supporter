@@ -12,6 +12,9 @@ use crate::domain::table_format::{
 use rayon::prelude::*;
 use std::collections::HashSet;
 
+#[cfg(feature = "multi-sfmt")]
+use crate::domain::hash::{gen_hash_from_seed_x16, reduce_hash_x16_multi_table};
+
 /// Search for initial seeds from needle values
 ///
 /// This is the unified entry point for seed search.
@@ -57,6 +60,78 @@ pub fn search_seeds_with_validation(
         table,
         table_id,
     ))
+}
+
+// =============================================================================
+// 16-table parallel search (multi-sfmt feature)
+// =============================================================================
+
+/// Search 16 tables simultaneously using multi-sfmt
+///
+/// This is the parallel version of `search_seeds` that processes all 16 tables
+/// at once using SIMD-optimized hash computation. Each column position is
+/// processed in parallel using rayon, and within each column, all 16 tables
+/// are processed using multi-sfmt.
+///
+/// # Arguments
+/// * `needle_values` - 8 needle values (0-16 each) representing clock hand positions
+/// * `consumption` - The RNG consumption value
+/// * `tables` - 16 sorted rainbow tables (one per table_id 0..15)
+///
+/// # Returns
+/// A vector of (table_id, seed) pairs for all found initial seeds
+#[cfg(feature = "multi-sfmt")]
+pub fn search_seeds_x16(
+    needle_values: [u64; 8],
+    consumption: i32,
+    tables: [&[ChainEntry]; 16],
+) -> Vec<(u32, u32)> {
+    let target_hash = gen_hash(needle_values);
+
+    let results: HashSet<(u32, u32)> = (0..MAX_CHAIN_LENGTH)
+        .into_par_iter()
+        .flat_map(|column| search_column_x16(consumption, target_hash, column, &tables))
+        .collect();
+
+    results.into_iter().collect()
+}
+
+/// Search a single column position across all 16 tables simultaneously
+#[cfg(feature = "multi-sfmt")]
+fn search_column_x16(
+    consumption: i32,
+    target_hash: u64,
+    column: u32,
+    tables: &[&[ChainEntry]; 16],
+) -> Vec<(u32, u32)> {
+    let mut results = Vec::new();
+
+    // Step 1: Calculate end hashes for all 16 tables simultaneously
+    let mut hashes = [target_hash; 16];
+    for n in column..MAX_CHAIN_LENGTH {
+        let seeds = reduce_hash_x16_multi_table(hashes, n);
+        hashes = gen_hash_from_seed_x16(seeds, consumption);
+    }
+
+    // Step 2: Binary search and verify in each table
+    for (table_id, (table, &end_hash)) in tables.iter().zip(hashes.iter()).enumerate() {
+        let expected_end_hash = end_hash as u32;
+        let candidates = binary_search_by_end_hash(table, expected_end_hash, consumption);
+
+        for entry in candidates {
+            if let Some(found_seed) = verify_chain(
+                entry.start_seed,
+                column,
+                target_hash,
+                consumption,
+                table_id as u32,
+            ) {
+                results.push((table_id as u32, found_seed));
+            }
+        }
+    }
+
+    results
 }
 
 /// Search at a single column position
@@ -183,5 +258,24 @@ mod tests {
         let hash1 = gen_hash(needle_values);
         let hash2 = gen_hash_from_seed(seed, consumption);
         assert_eq!(hash1, hash2);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_search_seeds_x16_empty_tables() {
+        let empty: Vec<ChainEntry> = vec![];
+        let tables: [&[ChainEntry]; 16] = std::array::from_fn(|_| empty.as_slice());
+        let needle_values = [1u64, 2, 3, 4, 5, 6, 7, 8];
+        let results = search_seeds_x16(needle_values, 417, tables);
+        assert!(results.is_empty());
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    #[test]
+    fn test_search_column_x16_empty_tables() {
+        let empty: Vec<ChainEntry> = vec![];
+        let tables: [&[ChainEntry]; 16] = std::array::from_fn(|_| empty.as_slice());
+        let results = search_column_x16(417, 12345, 0, &tables);
+        assert!(results.is_empty());
     }
 }
