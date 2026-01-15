@@ -3,7 +3,7 @@ name: release-with-changelog
 description: CHANGELOG更新からcargo releaseまでを一括で実行する
 argument-hint: releaseType=patch|minor|major
 agent: agent
-tools: [run_in_terminal, read_file, grep_search]
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'github/*', 'agent', 'todo']
 ---
 
 目的:
@@ -14,7 +14,7 @@ tools: [run_in_terminal, read_file, grep_search]
 - ${input:releaseType}
 
 手順:
-1) #tool:run_in_terminal を使って最新タグと差分（マージ履歴・主要コミット）を確認する。
+1) #tool:execute または #tool:github/* を用いて、最新タグ以降の差分を取得する。
 2) 変更点を `Added / Changed / Fixed / Removed / Security` に分類する。
 3) CHANGELOG.md を更新する。
    - 形式は [changelog-format.instructions.md](../instructions/changelog-format.instructions.md) に従う。
