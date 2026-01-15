@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for reading and writing rainbow table files.
 
-use crate::constants::{CHAIN_ENTRY_SIZE, FILE_HEADER_SIZE, TABLE_FILE_EXTENSION};
+use crate::constants::{FILE_HEADER_SIZE, TABLE_FILE_EXTENSION};
 use crate::domain::chain::ChainEntry;
 use crate::domain::table_format::{
     TableFormatError, TableHeader, ValidationOptions, expected_file_size, validate_header,
