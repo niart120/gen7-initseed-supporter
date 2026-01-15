@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Rainbow table implementation for Gen 7 Pokemon initial seed search"
 license = "MIT"
-repository = "https://github.com/your-repo/gen7-initseed-supporter"
+repository = "https://github.com/niart120/gen7-initseed-supporter"
 authors = []
 
 [dependencies]

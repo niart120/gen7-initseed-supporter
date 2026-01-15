@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "CLI tools for Gen 7 Pokemon initial seed search"
 license = "MIT"
+repository = "https://github.com/niart120/gen7-initseed-supporter"
 
 [[bin]]
 name = "gen7seed_create"
@@ -19,4 +20,4 @@ multi-sfmt = ["gen7seed-rainbow/multi-sfmt"]
 mmap = ["gen7seed-rainbow/mmap"]
 
 [dependencies]
-gen7seed-rainbow = { path = "../gen7seed-rainbow" }
+gen7seed-rainbow = { path = "../gen7seed-rainbow", version = "0.1.0" }
