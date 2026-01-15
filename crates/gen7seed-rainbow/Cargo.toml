@@ -1,6 +1,6 @@
 [package]
 name = "gen7seed-rainbow"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Rainbow table implementation for Gen 7 Pokemon initial seed search"
 license = "MIT"

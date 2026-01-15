@@ -1,6 +1,6 @@
 [package]
 name = "gen7seed-cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "CLI tools for Gen 7 Pokemon initial seed search"
 license = "MIT"
@@ -20,4 +20,4 @@ multi-sfmt = ["gen7seed-rainbow/multi-sfmt"]
 mmap = ["gen7seed-rainbow/mmap"]
 
 [dependencies]
-gen7seed-rainbow = { path = "../gen7seed-rainbow", version = "0.1.0" }
+gen7seed-rainbow = { path = "../gen7seed-rainbow", version = "1.0.0" }
