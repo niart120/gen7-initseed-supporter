@@ -1266,7 +1266,7 @@ mod tests {
 - [x] Missing Seeds 形式ユニットテスト作成
 - [x] 統合テスト作成
 - [x] README.md 更新
-- [ ] copilot-instructions.md 更新（コマンド例等）
+- [x] copilot-instructions.md 更新（コマンド例等）
 
 ---
 

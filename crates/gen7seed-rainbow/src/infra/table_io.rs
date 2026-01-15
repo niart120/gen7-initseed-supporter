@@ -190,7 +190,9 @@ impl MappedSingleTable {
 
     #[cfg(target_endian = "big")]
     pub fn table(&self, _table_id: u32) -> Option<&[ChainEntry]> {
-        panic!("Big-endian platforms are not supported for memory-mapped tables.");
+        panic!(
+            "Big-endian platforms are not supported for memory-mapped tables. Use load_single_table() instead for non-memory-mapped access."
+        );
     }
 
     /// Get the number of tables
