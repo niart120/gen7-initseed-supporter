@@ -7,6 +7,9 @@ use crate::constants::{FILE_FORMAT_VERSION, FILE_HEADER_SIZE, MISSING_MAGIC};
 use crate::domain::table_format::TableHeader;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+const FNV_PRIME: u64 = 0x100000001b3;
+
 /// Missing seeds file header metadata
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MissingSeedsHeader {
@@ -112,18 +115,18 @@ impl MissingSeedsHeader {
 
 /// Calculate source checksum from table header (FNV-1a based)
 pub fn calculate_source_checksum(header: &TableHeader) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
+    let mut h: u64 = FNV_OFFSET_BASIS;
 
     h ^= header.consumption as u64;
-    h = h.wrapping_mul(0x100000001b3);
+    h = h.wrapping_mul(FNV_PRIME);
     h ^= header.chain_length as u64;
-    h = h.wrapping_mul(0x100000001b3);
+    h = h.wrapping_mul(FNV_PRIME);
     h ^= header.chains_per_table as u64;
-    h = h.wrapping_mul(0x100000001b3);
+    h = h.wrapping_mul(FNV_PRIME);
     h ^= header.num_tables as u64;
-    h = h.wrapping_mul(0x100000001b3);
+    h = h.wrapping_mul(FNV_PRIME);
     h ^= header.created_at;
-    h = h.wrapping_mul(0x100000001b3);
+    h = h.wrapping_mul(FNV_PRIME);
 
     h
 }
