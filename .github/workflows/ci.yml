@@ -17,6 +17,8 @@ concurrency:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C target-cpu=native"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
