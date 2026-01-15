@@ -38,6 +38,9 @@ use std::fs::File;
 use std::io::Write;
 use tempfile::TempDir;
 
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::search_seeds_x16;
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -266,7 +269,7 @@ fn test_search_known_seeds() {
         }
 
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
-        let results = search_seeds(needle, CONSUMPTION, &entries, 0);
+        let results = search_seeds(needle, CONSUMPTION, entries, 0);
 
         // The seed should be found (unless there's a hash collision that excludes it)
         // Note: Due to rainbow table nature, not all seeds are guaranteed to be found
@@ -355,7 +358,7 @@ fn test_full_table_search_random_seeds() {
     let mut found_count = 0;
     for &seed in &test_seeds {
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
-        let results = search_seeds(needle, CONSUMPTION, &table, 0);
+        let results = search_seeds(needle, CONSUMPTION, table, 0);
         if results.contains(&seed) {
             found_count += 1;
         }
@@ -371,5 +374,120 @@ fn test_full_table_search_random_seeds() {
     assert!(
         found_count > 0,
         "At least one seed should be found in the table"
+    );
+}
+
+// =============================================================================
+// Multi-SFMT 16-table parallel search tests
+// =============================================================================
+
+/// Test search_seeds_x16 with full 16-table rainbow file
+///
+/// This test requires the full table at target/release/417.g7rt which contains
+/// all 16 tables generated with proper salts.
+#[test]
+#[ignore]
+#[cfg(feature = "multi-sfmt")]
+fn test_search_seeds_x16_with_full_table() {
+    let Some(path) = get_full_table_path() else {
+        return;
+    };
+
+    let options = ValidationOptions::for_search(CONSUMPTION);
+    let (_header, tables) = load_single_table(&path, &options).expect("Failed to load table");
+
+    assert_eq!(tables.len(), 16, "Full table should have 16 sub-tables");
+
+    // Build table references for x16 search
+    let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
+
+    // Test with seeds from different tables
+    let mut found_count = 0;
+    let mut total_tests = 0;
+
+    for table_id in 0..16u32 {
+        // Pick a seed from this table
+        if tables[table_id as usize].is_empty() {
+            continue;
+        }
+        let seed = tables[table_id as usize][0].start_seed;
+        let needle = generate_needle_from_seed(seed, CONSUMPTION);
+
+        // Search using x16
+        let x16_results = search_seeds_x16(needle, CONSUMPTION, table_refs);
+
+        // Also search using sequential
+        let seq_results = search_seeds(needle, CONSUMPTION, &tables[table_id as usize], table_id);
+
+        total_tests += 1;
+        if x16_results.iter().any(|(_, s)| *s == seed) {
+            found_count += 1;
+        }
+
+        // If sequential found it, x16 should also find it
+        if seq_results.contains(&seed) {
+            assert!(
+                x16_results.iter().any(|(_, s)| *s == seed),
+                "x16 should find seed {} which sequential found in table {}",
+                seed,
+                table_id
+            );
+        }
+    }
+
+    println!(
+        "test_search_seeds_x16_with_full_table: x16 found {}/{} seeds",
+        found_count, total_tests
+    );
+}
+
+/// Test that x16 search finds seeds across multiple tables
+#[test]
+#[ignore]
+#[cfg(feature = "multi-sfmt")]
+fn test_search_x16_cross_table() {
+    let Some(path) = get_full_table_path() else {
+        return;
+    };
+
+    let options = ValidationOptions::for_search(CONSUMPTION);
+    let (_header, tables) = load_single_table(&path, &options).expect("Failed to load table");
+
+    let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
+
+    // Random sampling from different tables
+    let mut rng = rand::thread_rng();
+    let mut found_in_correct_table = 0;
+    let test_count = 32;
+
+    for _ in 0..test_count {
+        let table_id = rng.gen_range(0..16u32);
+        if tables[table_id as usize].is_empty() {
+            continue;
+        }
+        let idx = rng.gen_range(0..tables[table_id as usize].len());
+        let seed = tables[table_id as usize][idx].start_seed;
+        let needle = generate_needle_from_seed(seed, CONSUMPTION);
+
+        let x16_results = search_seeds_x16(needle, CONSUMPTION, table_refs);
+
+        // Check if we found the seed and in which table
+        for (found_table_id, found_seed) in &x16_results {
+            if *found_seed == seed && *found_table_id == table_id {
+                found_in_correct_table += 1;
+                break;
+            }
+        }
+    }
+
+    println!(
+        "test_search_x16_cross_table: {} seeds found in correct table out of {} tests",
+        found_in_correct_table, test_count
+    );
+
+    // We expect a reasonable detection rate
+    assert!(
+        found_in_correct_table > test_count / 4,
+        "At least 25% of seeds should be found in their correct table"
     );
 }

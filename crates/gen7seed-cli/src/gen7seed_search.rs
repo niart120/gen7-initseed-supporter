@@ -8,13 +8,12 @@
 //!   gen7seed_search 417 --table-dir .\tables
 //!   Enter needle values (8 values, 0-16, space-separated): 5 12 3 8 14 1 9 6
 //!
-//! This tool searches across all tables sequentially, stopping when a match is found.
+//! This tool searches across all 16 tables using multi-sfmt parallel search.
 
 use gen7seed_rainbow::ValidationOptions;
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, SUPPORTED_CONSUMPTIONS};
 use gen7seed_rainbow::domain::table_format::TableFormatError;
 use gen7seed_rainbow::infra::table_io::get_single_table_path;
-use gen7seed_rainbow::search_seeds;
 use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -25,6 +24,21 @@ use gen7seed_rainbow::MappedSingleTable;
 
 #[cfg(not(feature = "mmap"))]
 use gen7seed_rainbow::infra::table_io::load_single_table;
+
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::search_seeds_x16;
+
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::ChainEntry;
+
+#[cfg(not(feature = "multi-sfmt"))]
+use gen7seed_rainbow::search_seeds;
+
+#[cfg(all(not(feature = "multi-sfmt"), feature = "mmap"))]
+use gen7seed_rainbow::constants::NUM_TABLES;
+
+#[cfg(all(not(feature = "multi-sfmt"), not(feature = "mmap")))]
+use gen7seed_rainbow::ChainEntry;
 
 fn format_table_error(path: &Path, err: TableFormatError) -> String {
     match err {
@@ -205,46 +219,118 @@ fn main() {
         println!("Searching across {} tables...", table_count);
         let start = Instant::now();
 
-        let mut all_results = Vec::new();
-        let mut tables_searched = 0;
-
-        for table_id in 0..table_count {
+        // Use parallel search when multi-sfmt is enabled and all 16 tables are available
+        #[cfg(feature = "multi-sfmt")]
+        let search_result = {
             #[cfg(feature = "mmap")]
-            let table_view = table.table(table_id);
+            let result = search_all_tables_x16(needle_values, consumption, &table);
+
             #[cfg(not(feature = "mmap"))]
-            let table_view = tables.get(table_id as usize).map(|t| t.as_slice());
+            let result = search_all_tables_x16_vec(needle_values, consumption, &tables);
 
-            if let Some(view) = table_view {
-                tables_searched += 1;
-                let results = search_seeds(needle_values, consumption, view, table_id);
+            result
+        };
 
-                if !results.is_empty() {
-                    println!("  Found in table {}!", table_id);
-                    all_results.extend(results);
-                    break;
-                }
-            }
-        }
+        // Fall back to sequential search when multi-sfmt is not enabled
+        #[cfg(not(feature = "multi-sfmt"))]
+        let search_result = {
+            #[cfg(feature = "mmap")]
+            let result = search_tables_sequential(needle_values, consumption, &table);
+
+            #[cfg(not(feature = "mmap"))]
+            let result = search_tables_sequential_vec(needle_values, consumption, &tables);
+
+            result
+        };
 
         let elapsed = start.elapsed();
 
-        if all_results.is_empty() {
+        if search_result.is_empty() {
             println!("No initial seed found.");
-            println!("Searched {} table(s).", tables_searched);
+            println!("Searched {} table(s).", table_count);
             println!("This can happen if:");
             println!("  - The needle values were entered incorrectly");
             println!("  - The seed is not covered by the loaded tables");
             println!("Try measuring the needle values again.");
         } else {
-            all_results.sort();
-            all_results.dedup();
+            let mut seeds: Vec<u32> = search_result.iter().map(|(_, seed)| *seed).collect();
+            seeds.sort();
+            seeds.dedup();
 
-            println!("Found {} initial seed(s):", all_results.len());
-            for seed in &all_results {
+            println!("Found {} initial seed(s):", seeds.len());
+            for seed in &seeds {
                 println!("  0x{:08X} ({})", seed, seed);
             }
         }
 
         println!("Search completed in {:.2} seconds.", elapsed.as_secs_f64());
     }
+}
+
+// =============================================================================
+// Parallel search (multi-sfmt feature)
+// =============================================================================
+
+/// Search all 16 tables in parallel using multi-sfmt (mmap version)
+#[cfg(all(feature = "multi-sfmt", feature = "mmap"))]
+fn search_all_tables_x16(
+    needle_values: [u64; NEEDLE_COUNT],
+    consumption: i32,
+    table: &MappedSingleTable,
+) -> Vec<(u32, u32)> {
+    let tables: [&[ChainEntry]; 16] =
+        std::array::from_fn(|i| table.table(i as u32).expect("table should exist"));
+    search_seeds_x16(needle_values, consumption, tables)
+}
+
+/// Search all 16 tables in parallel using multi-sfmt (Vec version)
+#[cfg(all(feature = "multi-sfmt", not(feature = "mmap")))]
+fn search_all_tables_x16_vec(
+    needle_values: [u64; NEEDLE_COUNT],
+    consumption: i32,
+    tables: &[Vec<ChainEntry>],
+) -> Vec<(u32, u32)> {
+    let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
+    search_seeds_x16(needle_values, consumption, table_refs)
+}
+
+// =============================================================================
+// Sequential search (fallback)
+// =============================================================================
+
+/// Search tables sequentially with early exit (mmap version)
+#[cfg(all(not(feature = "multi-sfmt"), feature = "mmap"))]
+fn search_tables_sequential(
+    needle_values: [u64; NEEDLE_COUNT],
+    consumption: i32,
+    table: &MappedSingleTable,
+) -> Vec<(u32, u32)> {
+    for table_id in 0..NUM_TABLES {
+        if let Some(view) = table.table(table_id) {
+            let results = search_seeds(needle_values, consumption, view, table_id);
+            if !results.is_empty() {
+                return results.into_iter().map(|seed| (table_id, seed)).collect();
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Search tables sequentially with early exit (Vec version)
+#[cfg(all(not(feature = "multi-sfmt"), not(feature = "mmap")))]
+fn search_tables_sequential_vec(
+    needle_values: [u64; NEEDLE_COUNT],
+    consumption: i32,
+    tables: &[Vec<ChainEntry>],
+) -> Vec<(u32, u32)> {
+    for (table_id, table) in tables.iter().enumerate() {
+        let results = search_seeds(needle_values, consumption, table, table_id as u32);
+        if !results.is_empty() {
+            return results
+                .into_iter()
+                .map(|seed| (table_id as u32, seed))
+                .collect();
+        }
+    }
+    Vec::new()
 }

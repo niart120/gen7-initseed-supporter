@@ -34,6 +34,10 @@ pub use app::generator::{GenerateOptions, generate_all_tables, generate_table};
 // Re-export searcher function
 pub use app::searcher::{search_seeds, search_seeds_with_validation};
 
+// Re-export 16-table parallel search (multi-sfmt feature)
+#[cfg(feature = "multi-sfmt")]
+pub use app::searcher::search_seeds_x16;
+
 // Re-export coverage analysis types
 pub use app::coverage::{
     BitmapOptions, MissingSeedsResult, build_seed_bitmap, extract_missing_seeds,

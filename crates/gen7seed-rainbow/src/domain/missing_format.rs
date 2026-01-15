@@ -73,7 +73,7 @@ impl MissingSeedsHeader {
 
     /// Deserialize header from bytes
     pub fn from_bytes(buf: &[u8; FILE_HEADER_SIZE]) -> Result<Self, MissingFormatError> {
-        if &buf[0..8] != &MISSING_MAGIC {
+        if buf[0..8] != MISSING_MAGIC {
             return Err(MissingFormatError::InvalidMagic);
         }
 
