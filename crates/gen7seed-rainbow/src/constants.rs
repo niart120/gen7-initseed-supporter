@@ -6,23 +6,16 @@
 // Rainbow table parameters
 // =============================================================================
 
-/// Maximum chain length (t = 2^12 = 4096)
-///
-/// Parameter optimization: t=4096 provides good balance between
-/// table size and search cost for high coverage.
-pub const MAX_CHAIN_LENGTH: u32 = 4096;
+/// Maximum chain length (t = 2^14 = 16,384)
+pub const MAX_CHAIN_LENGTH: u32 = 1 << 14; // 16,384
 
-/// Number of chains per table (m = 2^21 = 2,097,152)
+/// Number of chains per table (m = 163,840)
 ///
-/// Parameter optimization: With 8 tables of m=2^21 chains each,
-/// we achieve ~99.87% coverage in 128MB total (16MB per table).
-pub const NUM_CHAINS: u32 = 2_097_152;
+/// Calculated for 20MB total: 20 * (1 << 13) * 8 bytes * 16 tables = 20MB
+pub const NUM_CHAINS: u32 = 20 * (1 << 13); // 163,840
 
-/// Number of tables (T = 8)
-///
-/// Multi-table strategy: Each table uses a different salt value (0-7)
-/// to create independent coverage. Combined coverage ≈ 99.87%.
-pub const NUM_TABLES: u32 = 8;
+/// Number of tables (T = 16)
+pub const NUM_TABLES: u32 = 1 << 4; // 16
 
 /// Seed space size (N = 2^32)
 pub const SEED_SPACE: u64 = 1u64 << 32;
