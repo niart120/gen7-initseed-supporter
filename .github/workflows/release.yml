@@ -135,6 +135,36 @@ jobs:
         with:
           path: dist
 
+      - name: Rename binaries with platform suffix
+        shell: bash
+        run: |
+          cd dist
+          # Linux
+          if [ -d "gen7seed-linux" ]; then
+            mv gen7seed-linux/gen7seed_create gen7seed-linux/gen7seed_create-linux
+            mv gen7seed-linux/gen7seed_search gen7seed-linux/gen7seed_search-linux
+          fi
+          # macOS
+          if [ -d "gen7seed-macos" ]; then
+            mv gen7seed-macos/gen7seed_create gen7seed-macos/gen7seed_create-macos
+            mv gen7seed-macos/gen7seed_search gen7seed-macos/gen7seed_search-macos
+          fi
+          # Windows
+          if [ -d "gen7seed-windows" ]; then
+            mv gen7seed-windows/gen7seed_create.exe gen7seed-windows/gen7seed_create-windows.exe
+            mv gen7seed-windows/gen7seed_search.exe gen7seed-windows/gen7seed_search-windows.exe
+          fi
+          # Windows AVX2
+          if [ -d "gen7seed-windows-avx2" ]; then
+            mv gen7seed-windows-avx2/gen7seed_create.exe gen7seed-windows-avx2/gen7seed_create-windows-avx2.exe
+            mv gen7seed-windows-avx2/gen7seed_search.exe gen7seed-windows-avx2/gen7seed_search-windows-avx2.exe
+          fi
+          # Windows AVX512
+          if [ -d "gen7seed-windows-avx512" ]; then
+            mv gen7seed-windows-avx512/gen7seed_create.exe gen7seed-windows-avx512/gen7seed_create-windows-avx512.exe
+            mv gen7seed-windows-avx512/gen7seed_search.exe gen7seed-windows-avx512/gen7seed_search-windows-avx512.exe
+          fi
+
       - name: Generate checksums (SHA256)
         shell: pwsh
         run: |
@@ -150,8 +180,8 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/**/gen7seed_create*
-            dist/**/gen7seed_search*
+            dist/**/gen7seed_create-*
+            dist/**/gen7seed_search-*
             dist/**/417.g7rt
             dist/**/417.g7ms
             dist/SHA256SUMS.txt
