@@ -16,11 +16,15 @@ thiserror = "2.0"
 rayon = "1.10"
 memmap2 = "0.9"
 
+# オプション: 高速ハッシュ検索
+rustc-hash = { version = "2.1", optional = true }
+
 [features]
-default = ["multi-sfmt"]
+default = ["multi-sfmt", "hashmap-search"]
 mmap = []
 simd = []  # std::simd を使用（nightly必須）
 multi-sfmt = ["simd"]  # 16並列SFMT（nightly必須）
+hashmap-search = ["dep:rustc-hash"]  # FxHashMap による高速検索
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

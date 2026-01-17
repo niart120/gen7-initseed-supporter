@@ -23,6 +23,12 @@ use gen7seed_rainbow::{GenerateOptions, Sfmt, ValidationOptions, generate_table,
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::search_seeds_x16;
 
+#[cfg(feature = "hashmap-search")]
+use gen7seed_rainbow::{ChainHashTable, build_hash_table};
+
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+use gen7seed_rainbow::search_seeds_x16_with_hashmap;
+
 const CONSUMPTION: i32 = 417;
 const MINI_TABLE_SIZE: u32 = 100;
 
@@ -163,7 +169,7 @@ fn bench_search_mini_table_compare_x16(c: &mut Criterion) {
     let tables: [&[ChainEntry]; 16] = std::array::from_fn(|_| base_table.as_slice());
 
     // Use a known seed within range
-    let seed = (MINI_TABLE_SIZE / 2) as u32;
+    let seed = MINI_TABLE_SIZE / 2;
     let needle = generate_needle_from_seed(seed, CONSUMPTION);
 
     group.bench_function("single_sfmt_16_tables", |b| {
@@ -263,12 +269,69 @@ fn bench_search_full_table_compare_x16(c: &mut Criterion) {
     group.finish();
 }
 
+// =============================================================================
+// HashMap vs Binary Search Comparison (hashmap-search feature)
+// =============================================================================
+
+/// Compare HashMap-based search vs binary search (mini table)
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+fn bench_search_hashmap_vs_binary_mini(c: &mut Criterion) {
+    let mut group = c.benchmark_group("search_hashmap_vs_binary_mini");
+
+    let base_table = get_mini_table();
+
+    // Build hash tables for all 16 "tables" (using same base table)
+    let hash_tables: Vec<ChainHashTable> = (0..16)
+        .map(|_| build_hash_table(base_table, CONSUMPTION))
+        .collect();
+    let hash_table_refs: [&ChainHashTable; 16] = std::array::from_fn(|i| &hash_tables[i]);
+
+    let tables: [&[ChainEntry]; 16] = std::array::from_fn(|_| base_table.as_slice());
+
+    // Use a known seed within range
+    let seed = MINI_TABLE_SIZE / 2;
+    let needle = generate_needle_from_seed(seed, CONSUMPTION);
+
+    group.bench_function("binary_search_x16", |b| {
+        b.iter(|| search_seeds_x16(black_box(needle), CONSUMPTION, tables))
+    });
+
+    group.bench_function("hashmap_search_x16", |b| {
+        b.iter(|| search_seeds_x16_with_hashmap(black_box(needle), CONSUMPTION, hash_table_refs))
+    });
+
+    group.finish();
+}
+
+/// Benchmark hash table construction time
+#[cfg(feature = "hashmap-search")]
+fn bench_hash_table_build(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hash_table_build");
+
+    let base_table = get_mini_table();
+
+    group.bench_function("build_hash_table_mini", |b| {
+        b.iter(|| build_hash_table(black_box(base_table), CONSUMPTION))
+    });
+
+    group.finish();
+}
+
 criterion_group! {
     name = benches;
     config = table_criterion();
     targets =
         bench_search_mini_table,
         bench_search_full_table,
+}
+
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+criterion_group! {
+    name = benches_hashmap;
+    config = table_criterion();
+    targets =
+        bench_search_hashmap_vs_binary_mini,
+        bench_hash_table_build,
 }
 
 #[cfg(feature = "multi-sfmt")]
@@ -281,7 +344,10 @@ criterion_group! {
         bench_search_full_table_compare_x16,
 }
 
-#[cfg(feature = "multi-sfmt")]
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+criterion_main!(benches, benches_x16, benches_hashmap);
+
+#[cfg(all(feature = "multi-sfmt", not(feature = "hashmap-search")))]
 criterion_main!(benches, benches_x16);
 
 #[cfg(not(feature = "multi-sfmt"))]
