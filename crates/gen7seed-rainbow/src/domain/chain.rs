@@ -12,6 +12,9 @@ use crate::domain::hash::gen_hash_from_seed_x16;
 #[cfg(feature = "multi-sfmt")]
 use crate::domain::hash::reduce_hash_x16_with_salt;
 
+#[cfg(feature = "hashmap-search")]
+use rustc_hash::FxHashMap;
+
 /// Chain entry structure
 ///
 /// File format: (start_seed, end_seed)
@@ -213,8 +216,6 @@ pub type ChainHashTable = rustc_hash::FxHashMap<u64, Vec<u32>>;
 /// A hash table mapping end_seed hashes to their corresponding start_seeds
 #[cfg(feature = "hashmap-search")]
 pub fn build_hash_table(entries: &[ChainEntry], consumption: i32) -> ChainHashTable {
-    use rustc_hash::FxHashMap;
-
     let mut table: FxHashMap<u64, Vec<u32>> =
         FxHashMap::with_capacity_and_hasher(entries.len(), Default::default());
 
