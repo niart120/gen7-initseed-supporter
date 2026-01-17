@@ -6,6 +6,20 @@
 - Rust (2024 edition / nightly-2026-01-10)
 - SIMD版SFMTがデフォルト（feature `simd`）。SIMD非対応環境では `--no-default-features` を使用してください。
 
+## Feature Flags
+
+| Feature | デフォルト | 説明 |
+|---------|-----------|------|
+| `simd` | - | `std::simd` による SIMD 最適化（nightly必須） |
+| `multi-sfmt` | ✓ | 16並列SFMT（`simd` を含む） |
+| `hashmap-search` | ✓ | FxHashMap による O(1) 検索ルックアップ |
+| `mmap` | ✓ (CLI) | メモリマップI/O による高速テーブル読み込み |
+
+SIMD非対応環境やHashMap検索を無効にする場合：
+```powershell
+cargo build --release --no-default-features
+```
+
 ## 開発手順
 
 ### ビルド

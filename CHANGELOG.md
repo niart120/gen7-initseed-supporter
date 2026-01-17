@@ -1,6 +1,15 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- `hashmap-search` feature: FxHashMap による O(1) 検索ルックアップ（デフォルト有効）
+- `search_seeds_with_hashmap` / `search_seeds_x16_with_hashmap` 関数
+- `ChainHashTable` 型と `build_hash_table` 関数
+- HashMap vs 二分探索比較ベンチマーク
+
+### Changed
+- CLI検索ツール (`gen7seed_search`) がデフォルトでHashMap版を使用
+- 検索性能の向上（テーブルサイズに対するスケーリング改善）
 
 ## [1.0.0] - 2026-01-16
 ### Added
