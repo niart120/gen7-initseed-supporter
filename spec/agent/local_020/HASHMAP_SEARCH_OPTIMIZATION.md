@@ -63,18 +63,29 @@ $M^2$ 項が支配的なら $1600^2 \approx 2,560,000$ 倍になるはずだが�
 | メモリ使用量 | HashMap のオーバーヘッドにより約1.3〜1.5倍増加 |
 | HashDoS | オフラインツールのため考慮不要 |
 
+### 1.5 設計方針（CODE_SIMPLIFICATION準拠）
+
+[local_017/CODE_SIMPLIFICATION.md](../local_017/CODE_SIMPLIFICATION.md) の方針に従い、以下を遵守する:
+
+| 方針 | 適用 |
+|------|------|
+| **関数を増やさない** | `search_seeds_hashmap` 等の別関数は作成しない |
+| **Optionsパターン** | `SearchOptions` に HashMap 切り替えを追加 |
+| **feature flag** | `hashmap-search` で依存のオプトイン |
+| **CLIデフォルト化** | HashMap 版を**デフォルト**とする |
+
 ---
 
 ## 2. 対象ファイル
 
 | ファイル | 変更種別 | 変更内容 |
 |----------|----------|----------|
-| `crates/gen7seed-rainbow/Cargo.toml` | 修正 | `rustc-hash` 依存追加 |
-| `crates/gen7seed-rainbow/src/domain/chain.rs` | 修正 | `ChainTable` 型定義追加（FxHashMap ベース） |
-| `crates/gen7seed-rainbow/src/app/searcher.rs` | 修正 | HashMap 版検索関数追加 |
-| `crates/gen7seed-rainbow/src/infra/table_io.rs` | 修正 | HashMap 構築オプション追加 |
+| `crates/gen7seed-rainbow/Cargo.toml` | 修正 | `rustc-hash` 依存追加（`hashmap-search` feature） |
+| `crates/gen7seed-rainbow/src/domain/chain.rs` | 修正 | `ChainHashTable` 型定義追加 |
+| `crates/gen7seed-rainbow/src/app/searcher.rs` | 修正 | `search_seeds` 内部で HashMap/二分探索を切り替え |
+| `crates/gen7seed-rainbow/src/infra/table_io.rs` | 修正 | ロード時の HashMap 構築対応 |
 | `crates/gen7seed-rainbow/benches/table_bench.rs` | 修正 | 比較ベンチマーク追加、軽量化対応 |
-| `crates/gen7seed-rainbow/benches/rainbow_bench.rs` | 修正 | CI向け軽量ベンチ維持 |
+| `crates/gen7seed-cli/src/gen7seed_search.rs` | 修正 | HashMap 版をデフォルトで使用 |
 
 ---
 
@@ -96,51 +107,93 @@ $M^2$ 項が支配的なら $1600^2 \approx 2,560,000$ 倍になるはずだが�
 #### データ構造定義
 
 ```rust
+// domain/chain.rs
 use rustc_hash::FxHashMap;
 
 /// 検索用テーブル（HashMap版）
 /// key: end_seed（縮減後）, value: start_seeds のリスト
+#[cfg(feature = "hashmap-search")]
 pub type ChainHashTable = FxHashMap<u64, Vec<u32>>;
 ```
 
-### 3.2 構築フロー
+### 3.2 テーブル形式の整理
+
+| 形式 | 用途 | 構築タイミング |
+|------|------|----------------|
+| `Vec<ChainEntry>` | 生成・ソート・ファイルI/O | 生成時 |
+| `ChainHashTable` | 検索 | ロード後（検索開始前） |
+
+**方針**: ファイル形式は変更しない。ロード後に HashMap を構築する。
 
 ```rust
-/// ソート済み配列から HashMap を構築
-pub fn build_chain_hash_table(entries: &[ChainEntry]) -> ChainHashTable {
-    let mut table = FxHashMap::with_capacity_and_hasher(
-        entries.len(),
-        Default::default(),
-    );
-    for entry in entries {
-        table
-            .entry(entry.end_seed as u64)
-            .or_insert_with(Vec::new)
-            .push(entry.start_seed);
-    }
-    table
+// infra/table_io.rs
+#[cfg(feature = "hashmap-search")]
+pub fn load_table_as_hashmap(path: &Path) -> Result<ChainHashTable> {
+    let entries = load_table(path)?;
+    Ok(build_hash_table(&entries))
 }
 ```
 
-### 3.3 検索フロー
+### 3.3 Optionsパターンへの統合
 
+CODE_SIMPLIFICATION に従い、既存の関数シグネチャを維持しつつ内部実装を切り替える。
+
+**現行 API（変更なし）:**
 ```rust
-/// HashMap 版検索（単一テーブル）
-pub fn search_seeds_hashmap(
+pub fn search_seeds(
+    needle_values: [u64; 8],
+    consumption: i32,
+    table: &[ChainEntry],
+    table_id: u32,
+) -> Vec<u32>
+```
+
+**新規 API（HashMap用）:**
+```rust
+#[cfg(feature = "hashmap-search")]
+pub fn search_seeds_with_hashmap(
     needle_values: [u64; 8],
     consumption: i32,
     table: &ChainHashTable,
     table_id: u32,
-) -> Vec<u32> {
-    // ... 既存ロジックと同様だが二分探索を HashMap.get() に置換
-}
+) -> Vec<u32>
 ```
 
-### 3.4 互換性維持
+**設計判断**: 
+- テーブルの型が異なる（`&[ChainEntry]` vs `&ChainHashTable`）ため、完全な統合は不可能
+- Options パターンで切り替えるのではなく、**呼び出し元（CLI）でどちらを使うか決定**する
+- CLI では HashMap 版を**デフォルト**とする
 
-- 既存の `search_seeds`（二分探索版）は維持
-- 新規に `search_seeds_hashmap` を追加
-- feature flag `hashmap-search` で切り替え可能に
+### 3.4 16テーブル対応（search_seeds_x16）
+
+現行の `search_seeds_x16` は multi-sfmt による**カラム並列化**を行う。
+HashMap 版でも同様のアプローチを取る。
+
+```rust
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+pub fn search_seeds_x16_with_hashmap(
+    needle_values: [u64; 8],
+    consumption: i32,
+    tables: [&ChainHashTable; 16],
+) -> Vec<(u32, u32)>
+```
+
+### 3.5 feature flag 設計
+
+```toml
+[features]
+default = ["simd", "multi-sfmt", "hashmap-search"]  # HashMap をデフォルト有効
+simd = []
+multi-sfmt = ["simd"]
+hashmap-search = ["dep:rustc-hash"]  # 依存のオプトイン
+
+[dependencies]
+rustc-hash = { version = "2", optional = true }
+```
+
+**理由**: 
+- `hashmap-search` をデフォルト有効にすることで、CLI は自動的に高速版を使用
+- 依存を最小化したい場合は `--no-default-features` で無効化可能
 
 ---
 
@@ -205,12 +258,14 @@ fn bench_search_hashmap_vs_binary(c: &mut Criterion)
 ### 5.1 Cargo.toml 変更
 
 ```toml
-[dependencies]
-rustc-hash = "2"
-
 [features]
-default = ["simd", "multi-sfmt"]
-hashmap-search = []  # HashMap版検索を有効化
+default = ["simd", "multi-sfmt", "hashmap-search"]
+simd = []
+multi-sfmt = ["simd"]
+hashmap-search = ["dep:rustc-hash"]
+
+[dependencies]
+rustc-hash = { version = "2", optional = true }
 ```
 
 ### 5.2 ChainHashTable 型
@@ -218,15 +273,18 @@ hashmap-search = []  # HashMap版検索を有効化
 ```rust
 // domain/chain.rs
 
+#[cfg(feature = "hashmap-search")]
 use rustc_hash::FxHashMap;
 
 /// 検索用ハッシュテーブル
 /// 
 /// key: end_seed（縮減後の64bit値）
 /// value: その end_seed に対応する start_seed のリスト
+#[cfg(feature = "hashmap-search")]
 pub type ChainHashTable = FxHashMap<u64, Vec<u32>>;
 
 /// ソート済み配列から検索用ハッシュテーブルを構築
+#[cfg(feature = "hashmap-search")]
 pub fn build_hash_table(entries: &[ChainEntry]) -> ChainHashTable {
     let mut table = FxHashMap::with_capacity_and_hasher(
         entries.len(),
@@ -247,8 +305,9 @@ pub fn build_hash_table(entries: &[ChainEntry]) -> ChainHashTable {
 ```rust
 // app/searcher.rs
 
+/// HashMap 版検索（単一テーブル）
 #[cfg(feature = "hashmap-search")]
-pub fn search_seeds_hashmap(
+pub fn search_seeds_with_hashmap(
     needle_values: [u64; 8],
     consumption: i32,
     table: &ChainHashTable,
@@ -262,6 +321,7 @@ pub fn search_seeds_hashmap(
         .collect()
 }
 
+#[cfg(feature = "hashmap-search")]
 fn search_column_hashmap(
     column: u32,
     target_hash: u64,
@@ -279,10 +339,56 @@ fn search_column_hashmap(
     // 候補の検証
     candidates
         .iter()
-        .filter(|&&start_seed| verify_candidate(start_seed, target_hash, column, consumption, table_id))
+        .filter(|&&start_seed| verify_chain(start_seed, column, target_hash, consumption, table_id).is_some())
         .copied()
         .collect()
 }
+```
+
+### 5.4 16テーブル並列検索（HashMap版）
+
+```rust
+// app/searcher.rs
+
+/// 16テーブル同時検索（HashMap版）
+#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
+pub fn search_seeds_x16_with_hashmap(
+    needle_values: [u64; 8],
+    consumption: i32,
+    tables: [&ChainHashTable; 16],
+) -> Vec<(u32, u32)> {
+    let target_hash = gen_hash_from_values(needle_values);
+    
+    (0..MAX_CHAIN_LENGTH)
+        .into_par_iter()
+        .flat_map(|column| search_column_x16_hashmap(column, target_hash, tables, consumption))
+        .collect()
+}
+```
+
+### 5.5 CLI 統合
+
+```rust
+// gen7seed_search.rs
+
+fn main() {
+    // ファイルロード
+    let (_header, entries) = load_single_table(&path, &options)?;
+    
+    // HashMap 構築（デフォルト）
+    #[cfg(feature = "hashmap-search")]
+    let tables: Vec<ChainHashTable> = entries.iter()
+        .map(|e| build_hash_table(e))
+        .collect();
+    
+    // 検索実行
+    #[cfg(feature = "hashmap-search")]
+    let results = search_seeds_x16_with_hashmap(needle, consumption, table_refs);
+    
+    #[cfg(not(feature = "hashmap-search"))]
+    let results = search_seeds_x16(needle, consumption, table_refs);
+}
+```
 ```
 
 ---
@@ -295,21 +401,23 @@ fn search_column_hashmap(
 |--------|----------|
 | `test_hash_table_build` | ソート済み配列から正しく HashMap が構築される |
 | `test_hash_table_collision` | 同一 end_seed の複数エントリが正しく格納される |
-| `test_search_hashmap_basic` | 既知シードが正しく検索される |
-| `test_search_hashmap_vs_binary` | 二分探索版と同一結果を返す |
+| `test_search_with_hashmap_basic` | 既知シードが正しく検索される |
+| `test_search_hashmap_vs_binary` | 二分探索版（`search_seeds`）と同一結果を返す |
+| `test_search_x16_hashmap_vs_binary` | 16テーブル版でも同一結果を返す |
 
 ### 6.2 ベンチマーク
 
 | ベンチ | 目的 |
 |--------|------|
-| `bench_search_hashmap_vs_binary` | HashMap vs 二分探索の性能比較 |
+| `bench_search_hashmap_vs_binary` | HashMap vs 二分探索の性能比較（単一テーブル） |
+| `bench_search_x16_hashmap_vs_binary` | HashMap vs 二分探索の性能比較（16テーブル） |
 | `bench_hash_table_build` | HashMap 構築時間の計測 |
 
 ---
 
 ## 7. 実装チェックリスト
 
-### Phase 1: ベンチマーク整備（今回実施済み）
+### Phase 1: ベンチマーク整備（実施済み）
 
 - [x] `table_bench.rs` にミニテーブル版比較ベンチ追加
 - [x] `table_bench.rs` にフルテーブル版比較ベンチ追加
@@ -318,11 +426,12 @@ fn search_column_hashmap(
 
 ### Phase 2: HashMap 実装
 
-- [ ] `rustc-hash` 依存追加
-- [ ] `ChainHashTable` 型定義
+- [ ] `rustc-hash` を optional 依存として追加
+- [ ] `hashmap-search` feature を default に追加
+- [ ] `ChainHashTable` 型定義（`domain/chain.rs`）
 - [ ] `build_hash_table` 関数実装
-- [ ] `search_seeds_hashmap` 関数実装
-- [ ] `hashmap-search` feature flag 追加
+- [ ] `search_seeds_with_hashmap` 関数実装
+- [ ] `search_seeds_x16_with_hashmap` 関数実装
 
 ### Phase 3: テスト・ベンチマーク
 
@@ -330,10 +439,11 @@ fn search_column_hashmap(
 - [ ] HashMap vs 二分探索 比較ベンチ追加
 - [ ] 性能測定・評価
 
-### Phase 4: 統合
+### Phase 4: CLI 統合（デフォルト化）
 
-- [ ] CLI への統合（オプション化 or デフォルト化）
-- [ ] ドキュメント更新
+- [ ] `gen7seed_search.rs` で HashMap 版をデフォルト使用
+- [ ] feature 無効時は従来の二分探索にフォールバック
+- [ ] ドキュメント更新（README、CHANGELOG）
 
 ---
 
