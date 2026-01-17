@@ -1,10 +1,6 @@
-# Rust build artifacts
+# Rust build artifacts and lockfile
 /target/
-**/target/
-/.cargo
-
-# Cargo lock file (optional for libraries, keep for binaries)
-# Cargo.lock
+Cargo.lock
 
 # IDE / Editor
 .idea/
@@ -12,22 +8,34 @@
 *.swp
 *.swo
 *~
+*.iml
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Rainbow table files (large binary files)
+# Large binary files (rainbow tables, compiled binaries)
 *.tbl
 *.sorted.tbl
+*.g7rt
+*.sorted.g7rt
 *.bin
 *.sorted.bin
-target/release/*.bin
+*.prof
 
-# Benchmark data
+# Benchmark and profiling artifacts
 benches/data/
-
-# Profiling
 perf.data
 perf.data.old
 flamegraph.svg
+
+# Temporary and environment files
+*.tmp
+*.bak
+.env
+.env.local
