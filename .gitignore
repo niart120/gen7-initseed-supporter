@@ -1,6 +1,7 @@
 # Rust build artifacts and lockfile
 /target/
 Cargo.lock
+/.cargo/
 
 # IDE / Editor
 .idea/
