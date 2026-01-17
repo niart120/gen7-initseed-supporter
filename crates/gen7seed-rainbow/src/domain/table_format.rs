@@ -206,12 +206,13 @@ pub fn validate_header(
     options: &ValidationOptions,
 ) -> Result<(), TableFormatError> {
     if let Some(expected) = options.expected_consumption
-        && header.consumption != expected {
-            return Err(TableFormatError::ConsumptionMismatch {
-                expected,
-                found: header.consumption,
-            });
-        }
+        && header.consumption != expected
+    {
+        return Err(TableFormatError::ConsumptionMismatch {
+            expected,
+            found: header.consumption,
+        });
+    }
 
     if options.require_sorted && !header.is_sorted() {
         return Err(TableFormatError::TableNotSorted);

@@ -67,12 +67,13 @@ pub fn load_missing_seeds(
     let header = MissingSeedsHeader::from_bytes(&header_buf)?;
 
     if let Some(expected) = expected_consumption
-        && header.consumption != expected {
-            return Err(MissingFormatError::ConsumptionMismatch {
-                expected,
-                found: header.consumption,
-            });
-        }
+        && header.consumption != expected
+    {
+        return Err(MissingFormatError::ConsumptionMismatch {
+            expected,
+            found: header.consumption,
+        });
+    }
 
     let expected_size = expected_missing_file_size(&header);
     if metadata.len() != expected_size {

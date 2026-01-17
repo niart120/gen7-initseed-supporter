@@ -189,6 +189,43 @@ pub fn enumerate_chain_seeds_x16<F>(
     }
 }
 
+// =============================================================================
+// HashMap-based search support (hashmap-search feature)
+// =============================================================================
+
+/// Hash table for fast O(1) lookups during search
+///
+/// Key: end_seed hash (computed from gen_hash_from_seed as u64)
+/// Value: List of start_seeds that map to this end_seed hash
+#[cfg(feature = "hashmap-search")]
+pub type ChainHashTable = rustc_hash::FxHashMap<u64, Vec<u32>>;
+
+/// Build a hash table from chain entries for O(1) lookup during search
+///
+/// The key is the end_seed hash (gen_hash_from_seed(end_seed, consumption) as u64),
+/// and the value is a list of start_seeds that produce that end hash.
+///
+/// # Arguments
+/// * `entries` - Slice of chain entries to index
+/// * `consumption` - The RNG consumption value used to compute end hash
+///
+/// # Returns
+/// A hash table mapping end_seed hashes to their corresponding start_seeds
+#[cfg(feature = "hashmap-search")]
+pub fn build_hash_table(entries: &[ChainEntry], consumption: i32) -> ChainHashTable {
+    use rustc_hash::FxHashMap;
+
+    let mut table: FxHashMap<u64, Vec<u32>> =
+        FxHashMap::with_capacity_and_hasher(entries.len(), Default::default());
+
+    for entry in entries {
+        let end_hash = gen_hash_from_seed(entry.end_seed, consumption);
+        table.entry(end_hash).or_default().push(entry.start_seed);
+    }
+
+    table
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,5 +490,72 @@ mod tests {
 
         // Should be called MAX_CHAIN_LENGTH + 1 times (initial + each step)
         assert_eq!(callback_count, MAX_CHAIN_LENGTH + 1);
+    }
+
+    // =============================================================================
+    // Hash table tests (hashmap-search feature)
+    // =============================================================================
+
+    #[cfg(feature = "hashmap-search")]
+    #[test]
+    fn test_build_hash_table_empty() {
+        let entries: Vec<ChainEntry> = vec![];
+        let table = build_hash_table(&entries, 417);
+        assert!(table.is_empty());
+    }
+
+    #[cfg(feature = "hashmap-search")]
+    #[test]
+    fn test_build_hash_table_single_entry() {
+        let entries = vec![ChainEntry::new(100, 200)];
+        let table = build_hash_table(&entries, 417);
+
+        // Should have one entry
+        assert_eq!(table.len(), 1);
+
+        // Lookup by end hash
+        let end_hash = gen_hash_from_seed(200, 417);
+        let start_seeds = table.get(&end_hash).unwrap();
+        assert_eq!(start_seeds, &[100]);
+    }
+
+    #[cfg(feature = "hashmap-search")]
+    #[test]
+    fn test_build_hash_table_multiple_entries() {
+        // Create entries with different end_seeds
+        let entries = vec![
+            ChainEntry::new(100, 200),
+            ChainEntry::new(101, 201),
+            ChainEntry::new(102, 202),
+        ];
+        let table = build_hash_table(&entries, 417);
+
+        // Each entry should be accessible by its end_hash
+        for entry in &entries {
+            let end_hash = gen_hash_from_seed(entry.end_seed, 417);
+            let start_seeds = table.get(&end_hash).unwrap();
+            assert!(start_seeds.contains(&entry.start_seed));
+        }
+    }
+
+    #[cfg(feature = "hashmap-search")]
+    #[test]
+    fn test_build_hash_table_collision_handling() {
+        // Create entries that might produce hash collisions
+        // (same end_seed = same hash)
+        let entries = vec![
+            ChainEntry::new(100, 200),
+            ChainEntry::new(101, 200), // Same end_seed as above
+        ];
+        let table = build_hash_table(&entries, 417);
+
+        // Should have one hash entry with two start_seeds
+        assert_eq!(table.len(), 1);
+
+        let end_hash = gen_hash_from_seed(200, 417);
+        let start_seeds = table.get(&end_hash).unwrap();
+        assert_eq!(start_seeds.len(), 2);
+        assert!(start_seeds.contains(&100));
+        assert!(start_seeds.contains(&101));
     }
 }
