@@ -389,7 +389,7 @@ fn main() {
     let results = search_seeds_x16(needle, consumption, table_refs);
 }
 ```
-```
+
 
 ---
 
