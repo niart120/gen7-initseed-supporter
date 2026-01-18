@@ -57,7 +57,11 @@ fn main() {
 
     println!("Theoretical prediction:");
     println!("  Single table coverage: {:.4}%", c_single_pred * 100.0);
-    println!("  Total coverage (T={}): {:.4}%", NUM_TABLES, c_total_pred * 100.0);
+    println!(
+        "  Total coverage (T={}): {:.4}%",
+        NUM_TABLES,
+        c_total_pred * 100.0
+    );
     println!("  Predicted missing seeds: {}", missing_pred);
     println!();
 
@@ -84,9 +88,8 @@ fn main() {
             });
 
             // Track which seeds are valid in this batch
-            let valid_mask: [bool; 16] = std::array::from_fn(|i| {
-                (base_seed + i as u32) as u64 <= m
-            });
+            let valid_mask: [bool; 16] =
+                std::array::from_fn(|i| (base_seed + i as u32) as u64 <= m);
 
             // Enumerate all seeds in 16 chains simultaneously
             enumerate_chains_x16(start_seeds, valid_mask, CONSUMPTION, t, table_id, |seeds| {
