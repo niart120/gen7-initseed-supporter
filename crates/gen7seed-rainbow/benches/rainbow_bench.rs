@@ -1,6 +1,10 @@
 //! Rainbow Table ベンチマーク（縮減版）
 //!
 //! 目的: CI/ローカルともに1分以内で完走する最小セットを提供する。
+//!
+//! 注意: ベンチマークは `#[cfg(test)]` ではないため、constants.rs の本番値が適用される。
+//! - MAX_CHAIN_LENGTH = 4,096（本番値）
+//! - 以下のベンチマーク用定数は実行時間を考慮して縮小している。
 
 use std::time::Duration;
 
@@ -15,7 +19,16 @@ use gen7seed_rainbow::domain::chain::compute_chains_x16;
 #[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::domain::sfmt::MultipleSfmt;
 
+// =============================================================================
+// ベンチマーク用定数
+// =============================================================================
+
+/// 消費数（本番と同じ値）
 const CONSUMPTION: i32 = 417;
+
+/// ベンチマーク用チェイン数（本番 NUM_CHAINS = 647,168 の縮小版）
+/// テーブル生成・検索のベンチマークで使用
+const BENCH_NUM_CHAINS: u32 = 1_000;
 
 fn ci_criterion() -> Criterion {
     Criterion::default()
@@ -36,7 +49,10 @@ fn bench_chain(c: &mut Criterion) {
 fn bench_search_parallel(c: &mut Criterion) {
     let mut group = c.benchmark_group("search");
 
-    let mut table = generate_table(CONSUMPTION, GenerateOptions::default().with_range(0, 1000));
+    let mut table = generate_table(
+        CONSUMPTION,
+        GenerateOptions::default().with_range(0, BENCH_NUM_CHAINS),
+    );
     sort_table_parallel(&mut table, CONSUMPTION);
     let needle_values = [5u64, 10, 3, 8, 12, 1, 7, 15];
 
@@ -50,8 +66,13 @@ fn bench_search_parallel(c: &mut Criterion) {
 fn bench_table_generation_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("table_generation_comparison");
 
-    group.bench_function("parallel_1000", |b| {
-        b.iter(|| generate_table(CONSUMPTION, GenerateOptions::default().with_range(0, 1000)))
+    group.bench_function("parallel", |b| {
+        b.iter(|| {
+            generate_table(
+                CONSUMPTION,
+                GenerateOptions::default().with_range(0, BENCH_NUM_CHAINS),
+            )
+        })
     });
 
     group.finish();
