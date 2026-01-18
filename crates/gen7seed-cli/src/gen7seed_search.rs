@@ -9,8 +9,6 @@
 //!   Enter needle values (8 values, 0-16, space-separated): 5 12 3 8 14 1 9 6
 //!
 //! This tool searches across all 16 tables using multi-sfmt parallel search.
-//! When the `hashmap-search` feature is enabled (default), O(1) hash table
-//! lookups are used for faster search performance.
 
 use gen7seed_rainbow::ValidationOptions;
 use gen7seed_rainbow::constants::{NEEDLE_COUNT, SUPPORTED_CONSUMPTIONS};
@@ -27,16 +25,11 @@ use gen7seed_rainbow::MappedSingleTable;
 #[cfg(not(feature = "mmap"))]
 use gen7seed_rainbow::infra::table_io::load_single_table;
 
-// HashMap search imports (default)
-#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
-use gen7seed_rainbow::{ChainHashTable, build_hash_table, search_seeds_x16_with_hashmap};
-
-// Binary search imports (fallback when hashmap-search is disabled)
-#[cfg(all(feature = "multi-sfmt", not(feature = "hashmap-search")))]
+// Binary search imports
+#[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::search_seeds_x16;
 
-// ChainEntry is only needed for binary search fallback (hashmap-search disabled)
-#[cfg(all(feature = "multi-sfmt", not(feature = "hashmap-search")))]
+#[cfg(feature = "multi-sfmt")]
 use gen7seed_rainbow::ChainEntry;
 
 #[cfg(not(feature = "multi-sfmt"))]
@@ -172,33 +165,6 @@ fn main() {
         load_time.as_secs_f64()
     );
 
-    // Build hash tables for O(1) lookups when hashmap-search is enabled
-    #[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
-    let hash_tables: Vec<ChainHashTable> = {
-        println!("Building hash tables for fast search...");
-        let start_build = Instant::now();
-
-        #[cfg(feature = "mmap")]
-        let tables_data: Vec<ChainHashTable> = (0..16u32)
-            .map(|i| {
-                let slice = table.table(i).expect("table should exist");
-                build_hash_table(slice, consumption)
-            })
-            .collect();
-
-        #[cfg(not(feature = "mmap"))]
-        let tables_data: Vec<ChainHashTable> = tables
-            .iter()
-            .map(|t| build_hash_table(t, consumption))
-            .collect();
-
-        println!(
-            "Hash tables built in {:.3} seconds",
-            start_build.elapsed().as_secs_f64()
-        );
-        tables_data
-    };
-
     loop {
         print!(
             "\nEnter needle values ({} values, 0-16, space-separated, or 'q' to quit): ",
@@ -254,15 +220,8 @@ fn main() {
         println!("Searching across {} tables...", table_count);
         let start = Instant::now();
 
-        // Use HashMap-based parallel search (default when hashmap-search is enabled)
-        #[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
-        let search_result = {
-            let table_refs: [&ChainHashTable; 16] = std::array::from_fn(|i| &hash_tables[i]);
-            search_seeds_x16_with_hashmap(needle_values, consumption, table_refs)
-        };
-
-        // Use binary search parallel when hashmap-search is disabled
-        #[cfg(all(feature = "multi-sfmt", not(feature = "hashmap-search")))]
+        // Use binary search parallel when multi-sfmt is enabled
+        #[cfg(feature = "multi-sfmt")]
         let search_result = {
             #[cfg(feature = "mmap")]
             let result = search_all_tables_x16(needle_values, consumption, &table);
@@ -310,15 +269,11 @@ fn main() {
 }
 
 // =============================================================================
-// Parallel search with binary search (fallback when hashmap-search is disabled)
+// Parallel search with binary search
 // =============================================================================
 
 /// Search all 16 tables in parallel using multi-sfmt (mmap version)
-#[cfg(all(
-    feature = "multi-sfmt",
-    not(feature = "hashmap-search"),
-    feature = "mmap"
-))]
+#[cfg(all(feature = "multi-sfmt", feature = "mmap"))]
 fn search_all_tables_x16(
     needle_values: [u64; NEEDLE_COUNT],
     consumption: i32,
@@ -330,11 +285,7 @@ fn search_all_tables_x16(
 }
 
 /// Search all 16 tables in parallel using multi-sfmt (Vec version)
-#[cfg(all(
-    feature = "multi-sfmt",
-    not(feature = "hashmap-search"),
-    not(feature = "mmap")
-))]
+#[cfg(all(feature = "multi-sfmt", not(feature = "mmap")))]
 fn search_all_tables_x16_vec(
     needle_values: [u64; NEEDLE_COUNT],
     consumption: i32,

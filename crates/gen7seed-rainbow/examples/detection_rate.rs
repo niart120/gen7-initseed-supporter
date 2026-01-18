@@ -1,7 +1,8 @@
 //! 検出率評価スクリプト
 //!
-//! 複数レインボーテーブルの検出率と検索速度を計測する。
+//! 16個のレインボーテーブルを使用した検出率・検索速度計測。
 //! サンプリングは 32bit 全空間から一様抽出する。
+//! multi-sfmt feature により高速化。
 //!
 //! ## 実行方法
 //!
@@ -13,14 +14,14 @@
 //! ## 出力例
 //!
 //! ```text
-//! [Detection Rate Evaluation]
-//! Tables: T loaded
+//! [Detection Rate Evaluation (Multi-SFMT)]
+//! Tables: 16 loaded (each from 417.g7rt)
 //! Entries per table: 2,097,152
 //! Sample count: 20
 //!
-//! Detection rate: 19/20 (95.0%)
-//! Total time: 4.57s
-//! Average time per query: 228.5ms
+//! Detection rate: 20/20 (100.0%)
+//! Total time: 0.82s
+//! Average time per query: 41.0ms
 //! ```
 
 use std::path::PathBuf;
@@ -28,22 +29,39 @@ use std::time::Instant;
 
 use gen7seed_rainbow::Sfmt;
 use gen7seed_rainbow::ValidationOptions;
+use gen7seed_rainbow::domain::chain::ChainEntry;
 use gen7seed_rainbow::infra::table_io::{get_single_table_path, load_single_table};
-use gen7seed_rainbow::search_seeds;
 use rand::Rng;
+
+#[cfg(feature = "multi-sfmt")]
+use gen7seed_rainbow::search_seeds_x16;
 
 const CONSUMPTION: i32 = 417;
 const SAMPLE_COUNT: usize = 20;
+const NUM_TABLES: usize = 16;
 
 fn main() {
+    #[cfg(not(feature = "multi-sfmt"))]
+    {
+        eprintln!("Error: This example requires 'multi-sfmt' feature.");
+        eprintln!("Run with: cargo run --example detection_rate -p gen7seed-rainbow --release");
+        std::process::exit(1);
+    }
+
+    #[cfg(feature = "multi-sfmt")]
+    run_detection_rate();
+}
+
+#[cfg(feature = "multi-sfmt")]
+fn run_detection_rate() {
     // Get table directory
     let table_dir = get_table_dir();
 
-    println!("[Detection Rate Evaluation]");
+    println!("[Detection Rate Evaluation (Multi-SFMT)]");
     println!("Directory: {}", table_dir.display());
 
-    // Load table file
-    println!("Loading table file...");
+    // Load all 16 tables
+    println!("Loading {} tables...", NUM_TABLES);
     let start = Instant::now();
     let path = get_single_table_path(&table_dir, CONSUMPTION);
     let options = ValidationOptions::for_search(CONSUMPTION);
@@ -57,18 +75,14 @@ fn main() {
             std::process::exit(1);
         }
     };
-    println!(
-        "Loaded {} tables in {:.2}s",
-        header.num_tables,
-        start.elapsed().as_secs_f64()
-    );
-    if tables.is_empty() {
-        eprintln!("Error: No tables could be loaded.");
-        eprintln!(
-            "Generate with: cargo run --release -p gen7seed-cli --bin gen7seed_create -- 417"
-        );
+    let load_time = start.elapsed().as_secs_f64();
+    println!("Loaded {} tables in {:.2}s", tables.len(), load_time);
+
+    if tables.len() != NUM_TABLES {
+        eprintln!("Error: Expected {} tables, got {}", NUM_TABLES, tables.len());
         std::process::exit(1);
     }
+
     println!("Entries per table: {}", header.chains_per_table);
     println!("Sample count: {}", SAMPLE_COUNT);
     println!();
@@ -84,17 +98,12 @@ fn main() {
     for (i, &seed) in sample_seeds.iter().enumerate() {
         let needle = generate_needle_from_seed(seed, CONSUMPTION);
 
-        // Search across all tables
-        let mut found = false;
-        for (table_id, table) in tables.iter().enumerate() {
-            let results = search_seeds(needle, CONSUMPTION, table, table_id as u32);
-            if results.contains(&seed) {
-                found = true;
-                break;
-            }
-        }
+        // Search across all 16 tables simultaneously using multi-sfmt
+        let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
+        let results = search_seeds_x16(needle, CONSUMPTION, table_refs);
 
-        if found {
+        // Check if seed was found in any table
+        if results.iter().any(|(_, found_seed)| *found_seed == seed) {
             detected += 1;
         }
 
@@ -103,6 +112,7 @@ fn main() {
             eprint!("\rProgress: {}/{}", i + 1, SAMPLE_COUNT);
         }
     }
+
     eprintln!();
 
     let total_time = start.elapsed();
