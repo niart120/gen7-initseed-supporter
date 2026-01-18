@@ -134,8 +134,6 @@ fn generate_table_entries(
         sort_table_parallel(&mut entries, consumption);
         let sort_elapsed = sort_start.elapsed();
         println!("Sorted in {:.2} seconds.", sort_elapsed.as_secs_f64());
-
-        println!("Sorted in {:.2} seconds.", sort_elapsed.as_secs_f64());
     }
 
     println!("[Table {}/{}] Done.\n", table_id + 1, total_tables);
