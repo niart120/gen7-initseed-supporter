@@ -24,6 +24,7 @@ Thumbs.db
 *.tbl
 *.sorted.tbl
 *.g7rt
+*.g7ms
 *.sorted.g7rt
 *.bin
 *.sorted.bin
