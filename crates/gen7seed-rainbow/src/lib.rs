@@ -10,7 +10,6 @@
 //! - `simd`: Use `std::simd` for SIMD-optimized SFMT implementation (requires nightly Rust)
 //! - `multi-sfmt`: Enable 16-parallel SFMT for faster chain generation (default)
 //! - `mmap`: Enable memory-mapped file I/O
-//! - `hashmap-search`: Enable FxHashMap for O(1) search lookups (default)
 
 // Enable portable_simd when simd feature is enabled
 #![cfg_attr(feature = "simd", feature(portable_simd))]
@@ -35,19 +34,9 @@ pub use app::generator::{GenerateOptions, generate_all_tables, generate_table};
 // Re-export searcher function
 pub use app::searcher::{search_seeds, search_seeds_with_validation};
 
-// Re-export HashMap-based search (hashmap-search feature)
-#[cfg(feature = "hashmap-search")]
-pub use app::searcher::search_seeds_with_hashmap;
-#[cfg(feature = "hashmap-search")]
-pub use domain::chain::{ChainHashTable, build_hash_table};
-
 // Re-export 16-table parallel search (multi-sfmt feature)
 #[cfg(feature = "multi-sfmt")]
 pub use app::searcher::search_seeds_x16;
-
-// Re-export 16-table parallel search with HashMap (multi-sfmt + hashmap-search feature)
-#[cfg(all(feature = "multi-sfmt", feature = "hashmap-search"))]
-pub use app::searcher::search_seeds_x16_with_hashmap;
 
 // Re-export coverage analysis types
 pub use app::coverage::{
