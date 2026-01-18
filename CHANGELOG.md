@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-01-18
 ### Changed
 - リリースワークフローの最適化
   - 各OSビルドステップでバイナリをリネーム（`gen7seed_create-windows.exe` など）
