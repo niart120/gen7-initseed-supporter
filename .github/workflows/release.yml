@@ -42,6 +42,14 @@ jobs:
       - name: Cargo build (release)
         run: cargo build --release --workspace
 
+      - name: Rename binaries (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        shell: pwsh
+        run: |
+          $suffix = "${{ matrix.artifact_suffix }}"
+          Move-Item "target/release/gen7seed_create${{ matrix.bin_ext }}" "target/release/gen7seed_create-$suffix${{ matrix.bin_ext }}"
+          Move-Item "target/release/gen7seed_search${{ matrix.bin_ext }}" "target/release/gen7seed_search-$suffix${{ matrix.bin_ext }}"
+
       - name: Cargo build (release, AVX2)
         if: matrix.os == 'windows-latest'
         env:
@@ -56,13 +64,24 @@ jobs:
           CARGO_TARGET_DIR: target/avx512
         run: cargo build --release --workspace
 
+      - name: Rename binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Move-Item "target/release/gen7seed_create.exe" "target/release/gen7seed_create-windows.exe"
+          Move-Item "target/release/gen7seed_search.exe" "target/release/gen7seed_search-windows.exe"
+          Move-Item "target/avx2/release/gen7seed_create.exe" "target/avx2/release/gen7seed_create-windows-avx2.exe"
+          Move-Item "target/avx2/release/gen7seed_search.exe" "target/avx2/release/gen7seed_search-windows-avx2.exe"
+          Move-Item "target/avx512/release/gen7seed_create.exe" "target/avx512/release/gen7seed_create-windows-avx512.exe"
+          Move-Item "target/avx512/release/gen7seed_search.exe" "target/avx512/release/gen7seed_search-windows-avx512.exe"
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: gen7seed-${{ matrix.artifact_suffix }}
           path: |
-            target/release/gen7seed_create${{ matrix.bin_ext }}
-            target/release/gen7seed_search${{ matrix.bin_ext }}
+            target/release/gen7seed_create-${{ matrix.artifact_suffix }}${{ matrix.bin_ext }}
+            target/release/gen7seed_search-${{ matrix.artifact_suffix }}${{ matrix.bin_ext }}
           if-no-files-found: error
 
       - name: Upload binaries (AVX2)
@@ -71,8 +90,8 @@ jobs:
         with:
           name: gen7seed-windows-avx2
           path: |
-            target/avx2/release/gen7seed_create${{ matrix.bin_ext }}
-            target/avx2/release/gen7seed_search${{ matrix.bin_ext }}
+            target/avx2/release/gen7seed_create-windows-avx2${{ matrix.bin_ext }}
+            target/avx2/release/gen7seed_search-windows-avx2${{ matrix.bin_ext }}
           if-no-files-found: error
 
       - name: Upload binaries (AVX512)
@@ -81,8 +100,8 @@ jobs:
         with:
           name: gen7seed-windows-avx512
           path: |
-            target/avx512/release/gen7seed_create${{ matrix.bin_ext }}
-            target/avx512/release/gen7seed_search${{ matrix.bin_ext }}
+            target/avx512/release/gen7seed_create-windows-avx512${{ matrix.bin_ext }}
+            target/avx512/release/gen7seed_search-windows-avx512${{ matrix.bin_ext }}
           if-no-files-found: error
 
   generate-tables:
@@ -135,53 +154,20 @@ jobs:
         with:
           path: dist
 
-      - name: Rename binaries with platform suffix
-        shell: bash
-        run: |
-          cd dist
-          # Linux
-          if [ -d "gen7seed-linux" ]; then
-            mv gen7seed-linux/gen7seed_create gen7seed-linux/gen7seed_create-linux
-            mv gen7seed-linux/gen7seed_search gen7seed-linux/gen7seed_search-linux
-          fi
-          # macOS
-          if [ -d "gen7seed-macos" ]; then
-            mv gen7seed-macos/gen7seed_create gen7seed-macos/gen7seed_create-macos
-            mv gen7seed-macos/gen7seed_search gen7seed-macos/gen7seed_search-macos
-          fi
-          # Windows
-          if [ -d "gen7seed-windows" ]; then
-            mv gen7seed-windows/gen7seed_create.exe gen7seed-windows/gen7seed_create-windows.exe
-            mv gen7seed-windows/gen7seed_search.exe gen7seed-windows/gen7seed_search-windows.exe
-          fi
-          # Windows AVX2
-          if [ -d "gen7seed-windows-avx2" ]; then
-            mv gen7seed-windows-avx2/gen7seed_create.exe gen7seed-windows-avx2/gen7seed_create-windows-avx2.exe
-            mv gen7seed-windows-avx2/gen7seed_search.exe gen7seed-windows-avx2/gen7seed_search-windows-avx2.exe
-          fi
-          # Windows AVX512
-          if [ -d "gen7seed-windows-avx512" ]; then
-            mv gen7seed-windows-avx512/gen7seed_create.exe gen7seed-windows-avx512/gen7seed_create-windows-avx512.exe
-            mv gen7seed-windows-avx512/gen7seed_search.exe gen7seed-windows-avx512/gen7seed_search-windows-avx512.exe
-          fi
-
-      - name: Generate checksums (SHA256)
-        shell: pwsh
-        run: |
-          Set-Location dist
-          Get-ChildItem -File -Recurse | ForEach-Object {
-            $hash = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLower()
-            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1).Replace('\\','/')
-            "$hash  $relative"
-          } | Set-Content -NoNewline -Path SHA256SUMS.txt
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/**/gen7seed_create-*
-            dist/**/gen7seed_search-*
-            dist/**/417.g7rt
-            dist/**/417.g7ms
-            dist/SHA256SUMS.txt
+            dist/gen7seed-linux/gen7seed_create-linux
+            dist/gen7seed-linux/gen7seed_search-linux
+            dist/gen7seed-macos/gen7seed_create-macos
+            dist/gen7seed-macos/gen7seed_search-macos
+            dist/gen7seed-windows/gen7seed_create-windows.exe
+            dist/gen7seed-windows/gen7seed_search-windows.exe
+            dist/gen7seed-windows-avx2/gen7seed_create-windows-avx2.exe
+            dist/gen7seed-windows-avx2/gen7seed_search-windows-avx2.exe
+            dist/gen7seed-windows-avx512/gen7seed_create-windows-avx512.exe
+            dist/gen7seed-windows-avx512/gen7seed_search-windows-avx512.exe
+            dist/gen7seed-tables/417.g7rt
+            dist/gen7seed-tables/417.g7ms

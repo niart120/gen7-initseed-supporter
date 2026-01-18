@@ -28,16 +28,13 @@ gen7-initseed-supporter/
 |   `-- workflows/
 |-- spec/                             # 仕様書・設計ドキュメント
 |   |-- initial/                      # 初期設計ドキュメント
-|   |   |-- SFMT_RAINBOW_SPEC.md
-|   |   `-- SFMT_RAINBOW_IMPL_GUIDE.md
 |   `-- agent/                        # Copilot Agent用ドキュメント
 |-- crates/
 |   |-- gen7seed-cli/                 # CLIバイナリ
 |   |   |-- Cargo.toml
 |   |   `-- src/
 |   |       |-- gen7seed_create.rs
-|   |       |-- gen7seed_search.rs
-|   |       `-- gen7seed_sort.rs
+|   |       `-- gen7seed_search.rs
 |   `-- gen7seed-rainbow/             # レインボーテーブル処理（Rust）
 |       |-- Cargo.toml
 |       |-- README.md
