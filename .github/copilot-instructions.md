@@ -28,8 +28,6 @@ gen7-initseed-supporter/
 |   `-- workflows/
 |-- spec/                             # 仕様書・設計ドキュメント
 |   |-- initial/                      # 初期設計ドキュメント
-|   |   |-- SFMT_RAINBOW_SPEC.md
-|   |   `-- SFMT_RAINBOW_IMPL_GUIDE.md
 |   `-- agent/                        # Copilot Agent用ドキュメント
 |-- crates/
 |   |-- gen7seed-cli/                 # CLIバイナリ
