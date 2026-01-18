@@ -46,7 +46,6 @@ cargo run --release -p gen7seed-cli --bin gen7seed_search -- 417
 ## フィーチャ
 
 - `multi-sfmt`（既定）: 16並列SFMT（SIMD）を使用
-- `mmap`（既定）: 検索時にメモリマップを使用
 
 SIMD非対応環境では `--no-default-features` を付けてビルド/テストしてください。
 
