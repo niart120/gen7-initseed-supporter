@@ -12,7 +12,6 @@ use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
 fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {
@@ -124,17 +123,15 @@ pub fn save_single_table(
 }
 
 // =============================================================================
-// Memory-mapped single-file table (mmap feature)
+// Memory-mapped single-file table
 // =============================================================================
 
-#[cfg(feature = "mmap")]
 /// Memory-mapped single-file rainbow table
 pub struct MappedSingleTable {
     header: TableHeader,
     mmap: Mmap,
 }
 
-#[cfg(feature = "mmap")]
 impl MappedSingleTable {
     /// Open a single-file table as memory-mapped
     pub fn open(
@@ -273,7 +270,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "mmap")]
     #[test]
     fn test_mapped_table_read() {
         let path = create_temp_file("test_mmap.g7rt");
@@ -292,7 +288,6 @@ mod tests {
         fs::remove_file(path).ok();
     }
 
-    #[cfg(feature = "mmap")]
     #[test]
     fn test_mapped_table_matches_load_table() {
         let path = create_temp_file("test_mmap_match.g7rt");

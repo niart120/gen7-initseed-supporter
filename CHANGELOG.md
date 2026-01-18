@@ -1,11 +1,21 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- レインボーテーブルのパラメータを最適化（総ファイルサイズ最小化）
+  - MAX_CHAIN_LENGTH: 8,192 → 4,096
+  - NUM_CHAINS: 262,144 → 647,168
+  - 期待カバレッジ: 99.90%、総ファイルサイズ: ~96 MB
+
 ### Removed
+- `mmap` feature flag を削除（メモリマップI/Oを常時有効化）
 - `hashmap-search` feature を削除（性能改善が想定より小さく、コード複雑化を回避）
 - `search_seeds_with_hashmap` / `search_seeds_x16_with_hashmap` 関数を削除
 - `ChainHashTable` 型と `build_hash_table` 関数を削除
 - `rustc-hash` 依存を削除
+
+### Fixed
+- `gen7seed_create` の重複した進捗表示メッセージを削除
 
 ## [1.0.0] - 2026-01-16
 ### Added

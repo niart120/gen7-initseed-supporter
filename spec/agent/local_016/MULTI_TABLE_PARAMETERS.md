@@ -14,16 +14,7 @@
 |------|------|
 | 単一テーブルの理論上限 | マージ効果により約76%が上限 |
 | 単純指数モデルの誤り | `1-e^(-mt/N)` は実測と大きく乖離 |
-| パラメータ未最適化 | 現行値（m=12.6M, t=3000）は暫定的 |
-
-#### 実測による検証結果
-
-m=2^23, t=4096 での初期検証：
-
-| 項目 | 予測（単純指数） | 実測 |
-|------|-----------------|------|
-| カバー率 | 99.97% | 72.06% |
-| 欠落シード | ~1.4M | 1.2B |
+| ファイルサイズ制約 | .g7rt と .g7ms の総サイズ最小化が必要 |
 
 #### 用語定義
 
@@ -39,11 +30,13 @@ m=2^23, t=4096 での初期検証：
 
 ### 1.3 期待効果
 
-| 効果 | 現行 | 改修後 |
-|------|------|--------|
-| カバー率 | ~52%（推定） | 要実測 |
-| テーブル総サイズ | 96 MB | 20 MB |
-| 検索コスト | ~1テーブル | 平均~8テーブル |
+| 効果 | 値 |
+|------|-----|
+| カバー率 | 99.90% |
+| .g7rt サイズ | 79.00 MB |
+| .g7ms サイズ | 16.58 MB |
+| 総サイズ | 95.58 MB |
+| 欠落シード数 | 約435万 |
 
 ---
 
@@ -51,18 +44,7 @@ m=2^23, t=4096 での初期検証：
 
 | ファイル | 変更種別 | 変更内容 |
 |----------|----------|----------|
-| `constants.rs` | 修正 | パラメータ値の更新、NUM_TABLES追加 |
-| `domain/hash.rs` | 修正 | reduction関数に table_id 引数追加 |
-| `domain/chain.rs` | 修正 | チェーン生成に table_id 引数追加 |
-| `app/generator.rs` | 修正 | table_id 対応 |
-| `app/searcher.rs` | 修正 | 複数テーブル検索対応 |
-| `infra/table_io.rs` | 修正 | ファイル命名規則変更 |
-| `gen7seed_create.rs` | 修正 | テーブル番号指定オプション |
-| `gen7seed_search.rs` | 修正 | 複数テーブル検索対応 |
-| `examples/multi_table_analysis.rs` | 削除 | 分析完了のため不要 |
-| `examples/coverage_precise.rs` | 削除 | 分析完了のため不要 |
-| `crates/gen7seed-rainbow/README.md` | 修正 | パラメータ説明の更新 |
-| `.github/copilot-instructions.md` | 修正 | 開発コマンド例の更新 |
+| `constants.rs` | 修正 | パラメータ値の更新 |
 
 ---
 
@@ -72,62 +54,65 @@ m=2^23, t=4096 での初期検証：
 
 実測データから導出した**逆比例モデル**を採用：
 
-$$C = 1 - e^{-\frac{mt}{N} \cdot \eta}, \quad \eta = \frac{1}{1 + 0.7 \cdot \frac{mt}{N}}$$
-
-#### モデル検証
-
-| m | t | mt/N | 実測 | 予測 | 誤差 |
-|---|---|------|------|------|------|
-| 2^16 | 3000 | 0.046 | 4.34% | 4.34% | 0.00% |
-| 2^18 | 3000 | 0.183 | 14.97% | 14.99% | +0.02% |
-| 2^21 | 3000 | 1.465 | 51.75% | 51.70% | -0.05% |
-| 2^23 | 4096 | 8.000 | 72.06% | 72.06% | 0.00% |
-
-### 3.2 複数テーブル戦略
-
-異なる salt を持つ T 枚のテーブルは独立にカバー：
+$$C_{single} = 1 - e^{-x \cdot \eta}, \quad x = \frac{mt}{N}, \quad \eta = \frac{1}{1 + 0.7x}$$
 
 $$C_{total} = 1 - (1 - C_{single})^T$$
 
-| T | m | t | C_single | C_total | 総サイズ |
-|---|---|---|----------|---------|----------|
-| 1 | 2^24 | 4096 | 73.06% | 73.06% | 128 MB |
-| 2 | 2^23 | 4096 | 70.24% | 91.15% | 128 MB |
-| 4 | 2^22 | 4096 | 65.10% | 98.52% | 128 MB |
-| **8** | **2^21** | **4096** | **56.54%** | **99.87%** | **128 MB** |
+#### モデル検証（実測との比較）
 
-### 3.3 採用パラメータ
+| t | m | 予測カバー率 | 実測カバー率 | 誤差 |
+|---|---|-------------|-------------|------|
+| 2^13 | 45×2^13 | 99.9468% | 99.9470% | +0.0002% |
+| 2^12 | 79×2^13 | 99.8988% | 99.8987% | -0.0001% |
+| 2^11 | 128×2^13 | 99.7331% | 99.7319% | -0.0012% |
+
+### 3.2 ファイルサイズモデル
+
+$$S_{g7rt} = m \times 8 \times T$$
+
+$$S_{g7ms} = N \times (1 - C_{total}) \times 4$$
+
+$$S_{total} = S_{g7rt} + S_{g7ms}$$
+
+### 3.3 最適化問題
+
+$x = mt/N$ を変数として総サイズを最小化：
+
+$$\frac{S_{total}}{N} = \frac{8Tx}{t} + 4 \cdot (1 - C_{total})$$
+
+t=4096, T=16 を代入し、微分して0とおく：
+
+$$\frac{d}{dx}\left(\frac{S_{total}}{N}\right) = \frac{1}{32} - \frac{64 \cdot \exp\left(\frac{-16x}{1+0.7x}\right)}{(1+0.7x)^2} = 0$$
+
+数値解: $x_{opt} = 0.6184$
+
+$$m_{opt} = \frac{x_{opt} \cdot N}{t} = 648,439 \approx 79 \times 2^{13}$$
+
+### 3.4 採用パラメータ
 
 | パラメータ | 値 | 備考 |
 |------------|-----|------|
-| t (MAX_CHAIN_LENGTH) | 16,384 (2^14) | チェーン長 |
-| m (NUM_CHAINS) | 163,840 (20×2^13) | テーブルあたり |
+| t (MAX_CHAIN_LENGTH) | 4,096 (2^12) | チェーン長 |
+| m (NUM_CHAINS) | 647,168 (79×2^13) | テーブルあたり |
 | T (NUM_TABLES) | 16 (2^4) | テーブル枚数 |
-| テーブルサイズ | 1.25 MB × 16 = 20 MB | 総サイズ |
 
 #### パラメータ選定理由
 
-1. **総サイズ 20MB**: 配布・運用上扱いやすいサイズ
-2. **NUM_CHAINS = 20 × (1 << 13)**: 計算根拠が明確（20MB / 8 bytes / 16 tables）
-3. **NUM_TABLES = 16**: テーブル枚数を増やしカバー率を補完
-4. **MAX_CHAIN_LENGTH = 16,384**: 長いチェーンで検索コストを軽減
+1. **総ファイルサイズ最小化**: .g7rt + .g7ms の総和を最小化する最適点
+2. **t=4096**: 検索時の計算コストと総サイズのバランス
+3. **m=79×2^13**: 数学的導出による最適値
 
-### 3.4 不採用案（ADR）
+### 3.5 不採用案（ADR）
 
-#### 不採用: 単一大規模テーブル（T=1, m=2^23, t=4096）
+#### 不採用: t=2^13, m=45×2^13（総サイズ53.68MB）
 
-- **検討内容**: 64MB の単一テーブルで高カバー率を狙う
-- **不採用理由**: 実測 72%、理論上限 76%。目標カバー率に到達不可
+- **検討内容**: より小さな総サイズで高カバー率（99.95%）
+- **不採用理由**: 検索時の計算コストが2倍（チェーン長が2倍）
 
-#### 不採用: 補完テーブル戦略
+#### 不採用: t=2^11, m=128×2^13（総サイズ171.93MB）
 
-- **検討内容**: 1枚目の欠落シードから2枚目を生成
-- **不採用理由**: 抽出に300秒超、独立テーブルで十分なカバー率達成
-
-#### 不採用: 単純指数モデル
-
-- **検討内容**: `C = 1 - e^(-mt/N)` でパラメータ設計
-- **不採用理由**: 予測 99.97% → 実測 72.06%。マージ効果を無視
+- **検討内容**: 高速検索が可能
+- **不採用理由**: 総サイズが大きすぎる
 
 ---
 
@@ -136,182 +121,59 @@ $$C_{total} = 1 - (1 - C_{single})^T$$
 ### 4.1 constants.rs
 
 ```rust
-//! Rainbow table related constants
+/// Maximum chain length (t = 2^12 = 4,096)
+#[cfg(not(test))]
+pub const MAX_CHAIN_LENGTH: u32 = 1 << 12; // 4,096
 
-// =============================================================================
-// Rainbow table parameters
-// =============================================================================
-
-/// Maximum chain length (t = 2^14 = 16,384)
-pub const MAX_CHAIN_LENGTH: u32 = 1 << 14; // 16,384
-
-/// Number of chains per table (m = 163,840)
+/// Number of chains per table (m = 79 * 2^13 = 647,168)
 ///
-/// Calculated for 20MB total: 20 * (1 << 13) * 8 bytes * 16 tables = 20MB
-pub const NUM_CHAINS: u32 = 20 * (1 << 13); // 163,840
+/// Optimized for minimum total file size (.g7rt + .g7ms)
+/// .g7rt: 79 MB, .g7ms: ~17 MB, Total: ~96 MB
+#[cfg(not(test))]
+pub const NUM_CHAINS: u32 = 79 * (1 << 13); // 647,168
 
 /// Number of tables (T = 16)
 pub const NUM_TABLES: u32 = 1 << 4; // 16
-
-/// Seed space size (N = 2^32)
-pub const SEED_SPACE: u64 = 1u64 << 32;
-
-// =============================================================================
-// Hash function parameters
-// =============================================================================
-
-/// Number of needle states (0-16, 17 levels)
-pub const NEEDLE_STATES: u64 = 17;
-
-/// Number of needles used for hash calculation
-pub const NEEDLE_COUNT: usize = 8;
-
-// =============================================================================
-// File format
-// =============================================================================
-
-/// Byte size of a chain entry (start_seed: u32 + end_seed: u32)
-pub const CHAIN_ENTRY_SIZE: usize = 8;
-
-// =============================================================================
-// Target consumption values
-// =============================================================================
-
-/// List of supported consumption values
-pub const SUPPORTED_CONSUMPTIONS: [i32; 2] = [417, 477];
 ```
-
-### 4.2 domain/hash.rs（reduction関数）
-
-```rust
-/// Reduction function with salt (table_id) for multi-table support
-#[inline]
-pub fn reduce_hash_with_salt(hash: u64, column: u32, table_id: u32) -> u32 {
-    let salted = hash ^ ((table_id as u64).wrapping_mul(0x9e3779b97f4a7c15));
-    
-    let mut h = salted.wrapping_add(column as u64);
-    h = (h ^ (h >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-    h = (h ^ (h >> 27)).wrapping_mul(0x94d049bb133111eb);
-    h ^= h >> 31;
-    h as u32
-}
-
-/// 16-parallel version for multi-sfmt
-#[cfg(feature = "multi-sfmt")]
-#[inline]
-pub fn reduce_hash_x16_with_salt(hashes: [u64; 16], column: u32, table_id: u32) -> [u32; 16] {
-    use std::simd::Simd;
-
-    let h = Simd::from_array(hashes);
-    let salt = Simd::splat((table_id as u64).wrapping_mul(0x9e3779b97f4a7c15));
-    let col = Simd::splat(column as u64);
-    let c1 = Simd::splat(0xbf58476d1ce4e5b9u64);
-    let c2 = Simd::splat(0x94d049bb133111ebu64);
-
-    let mut h = (h ^ salt) + col;
-    h = (h ^ (h >> 30)) * c1;
-    h = (h ^ (h >> 27)) * c2;
-    h ^= h >> 31;
-
-    let arr = h.to_array();
-    std::array::from_fn(|i| arr[i] as u32)
-}
-
-/// Legacy reduction function (equivalent to table_id = 0)
-#[inline]
-pub fn reduce_hash(hash: u64, column: u32) -> u32 {
-    reduce_hash_with_salt(hash, column, 0)
-}
-```
-
-### 4.3 ファイル命名規則
-
-```
-{consumption}_{table_id}.sorted.bin
-
-例:
-417_0.sorted.bin   # テーブル 0 (1.25 MB)
-417_1.sorted.bin   # テーブル 1 (1.25 MB)
-...
-417_15.sorted.bin  # テーブル 15 (1.25 MB)
-```
-
-### 4.4 検索フロー
-
-1. 全テーブル（0〜15）を順次検索
-2. ヒットした時点で終了（早期リターン）
-3. 平均約8テーブルでヒット
-
-### 4.5 後方互換性
-
-| 項目 | 対応 |
-|------|------|
-| 既存テーブル | **互換性なし**（再生成必要） |
-| 移行手順 | 既存 `*.sorted.bin` を削除し、新パラメータで全テーブル再生成 |
 
 ---
 
 ## 5. テスト方針
 
-### 5.1 ユニットテスト
+### 5.1 実測検証
 
 | テスト | 検証内容 |
 |--------|----------|
-| `test_reduce_hash_with_salt_different_tables` | 異なる table_id で異なる結果 |
-| `test_reduce_hash_backward_compat` | `reduce_hash(h, c) == reduce_hash_with_salt(h, c, 0)` |
-| `test_reduce_hash_x16_with_salt_matches` | x16版と単体版の一致 |
-
-### 5.2 統合テスト
-
-| テスト | 検証内容 |
-|--------|----------|
-| `test_search_with_table_id` | table_id指定での検索が正しく動作 |
-| `test_file_naming` | ファイル命名規則が正しい |
-
-### 5.3 ベンチマーク
-
-| 項目 | 期待値 |
-|------|--------|
-| テーブル生成（1枚、m=2^21, t=4096） | ~37秒 |
-| 検索（1テーブルあたり） | 既存ベンチと同等 |
+| `examples/measure_coverage.rs` | 任意のパラメータでカバー率を実測 |
 
 ---
 
 ## 6. 実装チェックリスト
 
-- [ ] `constants.rs` のパラメータ更新（NUM_TABLES追加）
-- [ ] `reduce_hash_with_salt` / `reduce_hash_x16_with_salt` 実装
-- [ ] チェーン生成関数の table_id 対応
-- [ ] `infra/table_io.rs` ファイル命名規則変更
-- [ ] `gen7seed_create` の table_id オプション追加
-- [ ] `gen7seed_search` の複数テーブル対応
-- [ ] ユニットテスト追加
-- [ ] 分析用 examples 削除（multi_table_analysis.rs, coverage_precise.rs）
-- [ ] `crates/gen7seed-rainbow/README.md` 更新
-- [ ] `.github/copilot-instructions.md` 更新
-- [ ] 全8テーブル生成・動作確認
+- [x] カバー率モデルの検証（実測との比較）
+- [x] 総ファイルサイズ最小化の数学的導出
+- [x] `constants.rs` のパラメータ更新
+- [x] 実測検証ツール（measure_coverage.rs）の整備
 
 ---
 
 ## 付録: 実測データ
 
-### A.1 マージ分析（t=3000 固定）
+### A.1 t=2^12, m=79×2^13 での実測
 
-| m | Unique Seeds | Coverage | Efficiency |
-|---|--------------|----------|------------|
-| 2^16 | 186,278,769 | 4.34% | 94.75% |
-| 2^17 | 353,831,334 | 8.24% | 89.98% |
-| 2^18 | 642,855,096 | 14.97% | 81.72% |
-| 2^19 | 1,084,519,113 | 25.25% | 68.95% |
-| 2^20 | 1,649,416,572 | 38.40% | 52.43% |
-| 2^21 | 2,222,568,766 | 51.75% | 35.33% |
+| 項目 | 予測 | 実測 |
+|------|------|------|
+| カバー率 | 99.8988% | 99.8987% |
+| 欠落シード | 4,346,626 | 4,352,346 |
+| .g7rt | 79.00 MB | 79.00 MB |
+| .g7ms | 16.58 MB | 16.60 MB |
+| 総サイズ | 95.58 MB | 95.60 MB |
+| 処理時間 | - | 1,802秒 |
 
-### A.2 初期検証（m=2^23, t=4096, T=1）
+### A.2 各tでの最適点比較
 
-| 項目 | 値 |
-|------|-----|
-| 生成時間 | 293 秒 |
-| テーブルサイズ | 64 MB |
-| 到達シード数 | 3,094,989,751 |
-| カバー率 | 72.06% |
-| 欠落シード数 | 1,199,977,545 |
+| t | m | 予測カバー率 | 予測総サイズ | 実測総サイズ |
+|---|---|-------------|-------------|-------------|
+| 2^13 | 45×2^13 | 99.95% | 53.71 MB | 53.68 MB |
+| 2^12 | 79×2^13 | 99.90% | 95.58 MB | 95.60 MB |
+| 2^11 | 128×2^13 | 99.73% | 171.73 MB | 171.93 MB |

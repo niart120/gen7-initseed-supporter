@@ -19,11 +19,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-#[cfg(feature = "mmap")]
 use gen7seed_rainbow::MappedSingleTable;
-
-#[cfg(not(feature = "mmap"))]
-use gen7seed_rainbow::infra::table_io::load_single_table;
 
 // Binary search imports
 #[cfg(feature = "multi-sfmt")]
@@ -35,11 +31,8 @@ use gen7seed_rainbow::ChainEntry;
 #[cfg(not(feature = "multi-sfmt"))]
 use gen7seed_rainbow::search_seeds;
 
-#[cfg(all(not(feature = "multi-sfmt"), feature = "mmap"))]
+#[cfg(not(feature = "multi-sfmt"))]
 use gen7seed_rainbow::constants::NUM_TABLES;
-
-#[cfg(all(not(feature = "multi-sfmt"), not(feature = "mmap")))]
-use gen7seed_rainbow::ChainEntry;
 
 fn format_table_error(path: &Path, err: TableFormatError) -> String {
     match err {
@@ -134,17 +127,7 @@ fn main() {
 
     let options = ValidationOptions::for_search(consumption);
 
-    #[cfg(feature = "mmap")]
     let table = match MappedSingleTable::open(&table_path, &options) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {}", format_table_error(&table_path, e));
-            std::process::exit(1);
-        }
-    };
-
-    #[cfg(not(feature = "mmap"))]
-    let (header, tables) = match load_single_table(&table_path, &options) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("Error: {}", format_table_error(&table_path, e));
@@ -154,10 +137,7 @@ fn main() {
 
     let load_time = start_load.elapsed();
 
-    #[cfg(feature = "mmap")]
     let table_count = table.num_tables();
-    #[cfg(not(feature = "mmap"))]
-    let table_count = header.num_tables;
 
     println!(
         "Loaded {} tables in {:.3} seconds",
@@ -222,27 +202,11 @@ fn main() {
 
         // Use binary search parallel when multi-sfmt is enabled
         #[cfg(feature = "multi-sfmt")]
-        let search_result = {
-            #[cfg(feature = "mmap")]
-            let result = search_all_tables_x16(needle_values, consumption, &table);
-
-            #[cfg(not(feature = "mmap"))]
-            let result = search_all_tables_x16_vec(needle_values, consumption, &tables);
-
-            result
-        };
+        let search_result = search_all_tables_x16(needle_values, consumption, &table);
 
         // Fall back to sequential search when multi-sfmt is not enabled
         #[cfg(not(feature = "multi-sfmt"))]
-        let search_result = {
-            #[cfg(feature = "mmap")]
-            let result = search_tables_sequential(needle_values, consumption, &table);
-
-            #[cfg(not(feature = "mmap"))]
-            let result = search_tables_sequential_vec(needle_values, consumption, &tables);
-
-            result
-        };
+        let search_result = search_tables_sequential(needle_values, consumption, &table);
 
         let elapsed = start.elapsed();
 
@@ -272,8 +236,8 @@ fn main() {
 // Parallel search with binary search
 // =============================================================================
 
-/// Search all 16 tables in parallel using multi-sfmt (mmap version)
-#[cfg(all(feature = "multi-sfmt", feature = "mmap"))]
+/// Search all 16 tables in parallel using multi-sfmt
+#[cfg(feature = "multi-sfmt")]
 fn search_all_tables_x16(
     needle_values: [u64; NEEDLE_COUNT],
     consumption: i32,
@@ -284,23 +248,12 @@ fn search_all_tables_x16(
     search_seeds_x16(needle_values, consumption, tables)
 }
 
-/// Search all 16 tables in parallel using multi-sfmt (Vec version)
-#[cfg(all(feature = "multi-sfmt", not(feature = "mmap")))]
-fn search_all_tables_x16_vec(
-    needle_values: [u64; NEEDLE_COUNT],
-    consumption: i32,
-    tables: &[Vec<ChainEntry>],
-) -> Vec<(u32, u32)> {
-    let table_refs: [&[ChainEntry]; 16] = std::array::from_fn(|i| tables[i].as_slice());
-    search_seeds_x16(needle_values, consumption, table_refs)
-}
-
 // =============================================================================
 // Sequential search (fallback when multi-sfmt is disabled)
 // =============================================================================
 
-/// Search tables sequentially with early exit (mmap version)
-#[cfg(all(not(feature = "multi-sfmt"), feature = "mmap"))]
+/// Search tables sequentially with early exit
+#[cfg(not(feature = "multi-sfmt"))]
 fn search_tables_sequential(
     needle_values: [u64; NEEDLE_COUNT],
     consumption: i32,
@@ -312,25 +265,6 @@ fn search_tables_sequential(
             if !results.is_empty() {
                 return results.into_iter().map(|seed| (table_id, seed)).collect();
             }
-        }
-    }
-    Vec::new()
-}
-
-/// Search tables sequentially with early exit (Vec version)
-#[cfg(all(not(feature = "multi-sfmt"), not(feature = "mmap")))]
-fn search_tables_sequential_vec(
-    needle_values: [u64; NEEDLE_COUNT],
-    consumption: i32,
-    tables: &[Vec<ChainEntry>],
-) -> Vec<(u32, u32)> {
-    for (table_id, table) in tables.iter().enumerate() {
-        let results = search_seeds(needle_values, consumption, table, table_id as u32);
-        if !results.is_empty() {
-            return results
-                .into_iter()
-                .map(|seed| (table_id as u32, seed))
-                .collect();
         }
     }
     Vec::new()

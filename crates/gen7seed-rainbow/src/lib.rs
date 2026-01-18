@@ -56,6 +56,5 @@ pub use infra::missing_seeds_io::{
     get_missing_seeds_path, load_missing_seeds, save_missing_seeds, verify_missing_seeds_source,
 };
 
-// Re-export mmap functionality when feature is enabled
-#[cfg(feature = "mmap")]
+// Re-export mmap functionality
 pub use infra::table_io::MappedSingleTable;

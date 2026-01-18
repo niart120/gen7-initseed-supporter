@@ -6,19 +6,20 @@
 // Rainbow table parameters
 // =============================================================================
 
-/// Maximum chain length (t = 2^14 = 16,384)
+/// Maximum chain length (t = 2^12 = 4,096)
 #[cfg(not(test))]
-pub const MAX_CHAIN_LENGTH: u32 = 1 << 14; // 16,384
+pub const MAX_CHAIN_LENGTH: u32 = 1 << 12; // 4,096
 
 /// Maximum chain length (t = 128) - reduced for faster unit tests
 #[cfg(test)]
 pub const MAX_CHAIN_LENGTH: u32 = 128;
 
-/// Number of chains per table (m = 163,840)
+/// Number of chains per table (m = 79 * 2^13 = 647,168)
 ///
-/// Calculated for 20MB total: 20 * (1 << 13) * 8 bytes * 16 tables = 20MB
+/// Optimized for minimum total file size (.g7rt + .g7ms)
+/// .g7rt: 79 MB, .g7ms: ~17 MB, Total: ~96 MB
 #[cfg(not(test))]
-pub const NUM_CHAINS: u32 = 20 * (1 << 13); // 163,840
+pub const NUM_CHAINS: u32 = 79 * (1 << 13); // 647,168
 
 /// Number of chains per table (m = 1,280) - reduced for faster unit tests
 #[cfg(test)]

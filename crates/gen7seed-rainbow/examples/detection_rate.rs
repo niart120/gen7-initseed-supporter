@@ -79,7 +79,11 @@ fn run_detection_rate() {
     println!("Loaded {} tables in {:.2}s", tables.len(), load_time);
 
     if tables.len() != NUM_TABLES {
-        eprintln!("Error: Expected {} tables, got {}", NUM_TABLES, tables.len());
+        eprintln!(
+            "Error: Expected {} tables, got {}",
+            NUM_TABLES,
+            tables.len()
+        );
         std::process::exit(1);
     }
 
